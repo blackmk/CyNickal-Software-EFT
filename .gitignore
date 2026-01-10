@@ -1,0 +1,40 @@
+# Visual Studio
+.vs/
+[Dd]ebug/
+[Rr]elease/
+x64/
+x86/
+[Bb]in/
+[Oo]bj/
+*.user
+*.suo
+*.sln.doccache
+*.ncb
+*.userosscache
+*.sln.targets
+*.opendb
+*.db
+*.ipch
+
+# Temporary files
+*.tmp
+*.temp
+*.swp
+*~
+
+# Build results
+*.exe
+*.dll
+*.lib
+*.pdb
+*.ilk
+*.exp
+*.map
+
+# Git
+.git/
+.gitignore
+
+# User content
+InspirationFiles/
+git_guide.md
