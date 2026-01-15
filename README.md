@@ -1,17 +1,55 @@
-# CyNickal Software EFT DMA
-<img width="1919" height="793" alt="Showcase image" src="https://raw.githubusercontent.com/CyN1ckal/CyNickal-Software-EFT/refs/heads/master/Images/EFT_1.0.2.0.png"/>
+# CyNickal Software EFT DMA (Updated Fork)
 
-# Current Features
-- 3D Fuser ESP including player skeleton, player type (PMC/Scav/Boss), held weapon name, held weapon ammo, lootable items, lootable containers, and exfils
-- 2D Radar including players (with view direction ray), lootable items, lootable containers, and exfils
-- Hardware level aimbot using Makcu
-- Hardware level Flea Market bot that automatically buys certain items at given price thresholds
-- A varity of entity tables that display fine details of each entity
-- Many customization options/toggles for each feature; too many to list here
-- Customizable colors for all entities on both Fuser and Radar
-- Multiple user config support
+This is a feature-rich fork of the original CyNickal Software EFT DMA project. It includes significant improvements to stability, aimbot logic, and visual clarity, ensuring a premium experience.
 
-Currently all features are **READ ONLY**
+## Key Features & Improvements
 
-# Contribute!
-This project is open to pull requests, please contribute!
+### 🎯 Hardware-Level Aimbot & External Device Support
+Now supports **KMbox NET** for secure, external mouse control. The aimbot logic has been overhauled for precision and safety.
+
+<img width="800" src="Images/external_aim_device.png" alt="External Aim Device Settings"/>
+
+- **KMbox NET Integration**: Seamlessly connect and control your hardware aim device.
+- **Advanced Smoothing**: New algorithms to humanize movement.
+- **Fireport Aiming & Prediction**: Accounts for bullet travel and weapon barrel position (Fireport) for maximum accuracy.
+- **Targeting Logic**:
+    - **Bone Prioritization**: Customizable random chances for targeting specific bones (Head, Chest, etc.).
+    - **Dynamic Filtering**: Smart selection based on crosshair distance and visibility.
+
+<p float="left">
+  <img src="Images/aimbot_settings.png" width="45%" alt="Aimbot Settings" />
+  <img src="Images/targeting_settings.png" width="45%" alt="Targeting Configuration" />
+</p>
+
+### 👁️ Enhanced Visuals & ESP
+The visual overlay has been refined for better information density and aesthetics.
+
+<img width="800" src="Images/esp_gameplay.png" alt="In-Game ESP Preview"/>
+
+- **Player Skeletons**: Full bone rendering for precise enemy tracking.
+- **Rich Entity Info**: Displays Health, Weapon, Ammo, and Distance clearly.
+- **Weapon Aimline**: Visualizes exactly where enemies are aiming.
+- **Customizable Colors**: Fine-tune colors for every entity type (PMC, Scav, Boss, etc.).
+
+### 🗺️ Precision Radar
+The external 2D Radar has been fixed and improved.
+
+<img width="800" src="Images/radar_view.png" alt="2D Radar View"/>
+
+- **Correct Aspect Ratio**: The map now scales correctly without distortion, regardless of window size.
+- **Accurate Alignment**: Entities are perfectly mapped to their in-game coordinates.
+
+### ⚙️ Stability & Core Improvements
+- **Auto-Retry Mechanism**: Automatically detects and initializes the Game World when entering a raid—no more restarts needed.
+- **MemProcFS**: High-speed, safe memory reading.
+
+## Original Features
+- Hardware level Flea Market bot (Auto-buy).
+- Comprehensive Loot & Container ESP.
+- Multi-config support.
+
+## Getting Started
+Refer to the [Wiki](https://github.com/CyN1ckal/CyNickal-Software-EFT/wiki) (from the original repo) for basic setup instructions. Ensure your DMA hardware and KMbox are properly configured.
+
+---
+*Based on CyNickal Software EFT DMA.*
