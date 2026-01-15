@@ -1,0 +1,34 @@
+## Visual Studio ##
+.vs/
+[Dd]ebug/
+[Rr]elease/
+x64/
+x86/
+[Bb]in/
+[Oo]bj/
+*.user
+*.suo
+*.vssscc
+*.vspscc
+*.log
+*.tlog
+*.lastbuildstate
+ipch/
+*.opendb
+*.db
+*.sdf
+*.ncb
+*.cache
+
+## DMA Specifics (if any) ##
+# Add any specialized DLLs or config files you don't want to share here
+# *.dll
+# *.sys
+# *.exe
+# config.json (if it contains keys)
+
+## General ##
+.DS_Store
+Thumbs.db
+build_output.txt
+Cleanup.bat

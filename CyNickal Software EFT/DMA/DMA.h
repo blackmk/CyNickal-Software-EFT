@@ -1,0 +1,25 @@
+#pragma once
+
+class DMA_Connection
+{
+public: /* Singleton interface */
+	static DMA_Connection* GetInstance();
+
+private:
+	static inline DMA_Connection* m_Instance = nullptr;
+
+public:
+	void LightRefresh();
+	void FullRefresh();
+	VMM_HANDLE GetHandle();
+	bool EndConnection();
+	bool IsConnected() const;
+
+private:
+	VMM_HANDLE m_VMMHandle = nullptr;
+	bool m_bConnected = false;
+
+private:
+	DMA_Connection();
+	~DMA_Connection();
+};

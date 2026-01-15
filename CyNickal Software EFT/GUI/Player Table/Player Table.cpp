@@ -1,0 +1,156 @@
+#include "pch.h"
+#include "Player Table.h"
+#include "Game/EFT.h"
+#include "Game/Data/SpawnTypeNameMap.h"
+#include "Game/Classes/Players/CObservedPlayer/CObservedPlayer.h"
+#include <chrono>
+#include <mutex>
+#include <print>
+
+void PlayerTable::Render()
+{
+	if (!bMasterToggle)
+		return;
+
+	if (!EFT::pGameWorld || !EFT::pGameWorld->m_pRegisteredPlayers)
+		return;
+
+	ImGui::Begin("Player Table", &bMasterToggle);
+
+	ImGuiTableFlags TableFlags = ImGuiTableFlags_Resizable | ImGuiTableFlags_Reorderable | ImGuiTableFlags_Hideable | ImGuiTableFlags_RowBg | ImGuiTableFlags_BordersOuter | ImGuiTableFlags_BordersV | ImGuiTableFlags_NoHostExtendX | ImGuiTableFlags_NoBordersInBody;
+	if (ImGui::BeginTable("##Players", 13, TableFlags))
+	{
+		ImGui::TableSetupColumn("Address");
+		ImGui::TableSetupColumn("Copy Addr");
+		ImGui::TableSetupColumn("Position");
+		ImGui::TableSetupColumn("Yaw");
+		ImGui::TableSetupColumn("Side");
+		ImGui::TableSetupColumn("Spawn Type");
+		ImGui::TableSetupColumn("Voice");
+		ImGui::TableSetupColumn("Local Player?");
+		ImGui::TableSetupColumn("Tag Status");
+		ImGui::TableSetupColumn("Aiming");
+		ImGui::TableSetupColumn("Weapon");
+		ImGui::TableSetupColumn("Sanitized Weapon");
+		ImGui::TableSetupColumn("Ammo");
+		ImGui::TableHeadersRow();
+
+		static auto LastBusyLog = std::chrono::steady_clock::now();
+		auto& PlayerList = EFT::GetRegisteredPlayers();
+		auto PlayerLock = std::unique_lock<std::mutex>(PlayerList.m_Mut, std::try_to_lock);
+		if (!PlayerLock.owns_lock())
+		{
+			auto Now = std::chrono::steady_clock::now();
+			if (Now - LastBusyLog > std::chrono::seconds(1))
+			{
+				std::println("[PlayerTable] Skipping render: player data busy");
+				LastBusyLog = Now;
+			}
+		}
+		else
+		{
+			for (auto& Player : PlayerList.m_Players)
+				std::visit([](auto& Player) { PlayerTable::AddRow(Player); }, Player);
+		}
+
+		ImGui::EndTable();
+	}
+
+	ImGui::End();
+}
+
+
+void HandRows(const CBaseEFTPlayer& Player)
+{
+	auto& pHands = Player.m_pHands;
+	if (pHands && pHands->IsInvalid() == false && pHands->m_pHeldItem->IsInvalid() == false)
+	{
+		ImGui::TableNextColumn();
+		ImGui::Text(pHands->m_pHeldItem->m_pItemTemplate->m_sName.c_str());
+
+		ImGui::TableNextColumn();
+		ImGui::Text(pHands->m_pHeldItem->GetItemName().c_str());
+
+		ImGui::TableNextColumn();
+		if (pHands->m_pMagazine && pHands->m_pMagazine->IsInvalid() == false)
+			ImGui::Text("%d/%d, %s", pHands->m_pMagazine->m_CurrentCartridges, pHands->m_pMagazine->m_MaxCartridges, pHands->m_pMagazine->GetAmmoName().c_str());
+		else
+			ImGui::Text("N/A");
+	}
+	else
+	{
+		ImGui::TableNextColumn();
+		ImGui::Text("N/A");
+		ImGui::TableNextColumn();
+		ImGui::Text("N/A");
+		ImGui::TableNextColumn();
+		ImGui::Text("N/A");
+	}
+};
+
+void PlayerTable::AddRow(const CClientPlayer& Player)
+{
+	if (Player.IsInvalid())
+		return;
+
+	ImGui::TableNextRow();
+	ImGui::TableNextColumn();
+	ImGui::Text("0x%llX", Player.m_EntityAddress);
+	ImGui::TableNextColumn();
+	std::string Copy = "Copy##" + std::to_string(Player.m_EntityAddress);
+	if (ImGui::Button(Copy.c_str())) ImGui::SetClipboardText(std::to_string(Player.m_EntityAddress).c_str());
+	ImGui::TableNextColumn();
+	auto& RootPos = Player.GetBonePosition(EBoneIndex::Root);
+	ImGui::Text("%.2f, %.2f, %.2f", RootPos.x, RootPos.y, RootPos.z);
+	ImGui::TableNextColumn();
+	ImGui::Text("%.2f", Player.m_Yaw);
+	ImGui::TableNextColumn();
+	// Show faction name instead of raw integer
+	ImGui::Text("%s", SpawnTypeNames::GetFactionName(Player.m_Side).c_str());
+	ImGui::TableNextColumn();
+	// Show spawn type display name instead of raw integer
+	ImGui::Text("%s", SpawnTypeNames::GetDisplayName(Player.m_SpawnType).c_str());
+	ImGui::TableNextColumn();
+	ImGui::Text("N/A");
+	ImGui::TableNextColumn();
+	ImGui::Text("%d", (Player.IsLocalPlayer()) ? 1 : 0);
+	ImGui::TableNextColumn();
+	ImGui::Text("N/A");
+	ImGui::TableNextColumn();
+	ImGui::Text("%s", Player.IsAiming() ? "Yes" : "No");
+	HandRows(Player);
+}
+
+void PlayerTable::AddRow(const CObservedPlayer& Player)
+{
+	if (Player.IsInvalid())
+		return;
+
+	ImGui::TableNextRow();
+	ImGui::TableNextColumn();
+	ImGui::Text("0x%llX", Player.m_EntityAddress);
+	ImGui::TableNextColumn();
+	std::string Copy = "Copy##" + std::to_string(Player.m_EntityAddress);
+	if (ImGui::Button(Copy.c_str())) ImGui::SetClipboardText(std::to_string(Player.m_EntityAddress).c_str());
+	ImGui::TableNextColumn();
+	auto& RootPos = Player.GetBonePosition(EBoneIndex::Root);
+	ImGui::Text("%.2f, %.2f, %.2f", RootPos.x, RootPos.y, RootPos.z);
+	ImGui::TableNextColumn();
+	ImGui::Text("%.2f", Player.m_Yaw);
+	ImGui::TableNextColumn();
+	// Show faction name instead of raw integer
+	ImGui::Text("%s", SpawnTypeNames::GetFactionName(Player.m_Side).c_str());
+	ImGui::TableNextColumn();
+	// Show spawn type display name instead of raw integer
+	ImGui::Text("%s", SpawnTypeNames::GetDisplayName(Player.m_SpawnType).c_str());
+	ImGui::TableNextColumn();
+	ImGui::Text("%s", Player.m_Voice);
+	ImGui::TableNextColumn();
+	ImGui::Text("N/A");
+	ImGui::TableNextColumn();
+	// Show human-readable health status using the helper function
+	ImGui::Text("%s", GetHealthStatusString(Player.m_TagStatus));
+	ImGui::TableNextColumn();
+	ImGui::Text("N/A");
+	HandRows(Player);
+}

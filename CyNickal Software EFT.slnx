@@ -1,0 +1,15 @@
+<Solution>
+  <Configurations>
+    <BuildType Name="Debug" />
+    <BuildType Name="DLL" />
+    <BuildType Name="Release" />
+    <Platform Name="Any CPU" />
+    <Platform Name="x64" />
+  </Configurations>
+  <Project Path="CyNickal Software EFT/CyNickal Software EFT.vcxproj" Id="4ccca66d-4a99-4709-a5bd-37495b04cecf" />
+  <Project Path="TarkovDevAPI/TarkovDevAPI.pyproj" Type="888888a0-9f3d-457c-b088-3a5042f75d52" Id="e24c336e-2e49-43ef-a48f-aa12b4a22063">
+    <BuildType Solution="DLL|*" Project="Release" />
+    <Platform Project="AnyCPU" />
+    <Build Project="false" />
+  </Project>
+</Solution>
