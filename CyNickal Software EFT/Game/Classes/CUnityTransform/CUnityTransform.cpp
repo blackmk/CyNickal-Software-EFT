@@ -3,6 +3,7 @@
 #include "CUnityTransform.h"
 
 #include "Game/Offsets/Offsets.h"
+#include "Game/EFT.h"
 
 CUnityTransform::CUnityTransform(uintptr_t TransformAddress) : CBaseEntity(TransformAddress) {
 	//std::println("[CUnityTransform] Constructed with {0:X}", m_TransformAddress);
@@ -119,6 +120,129 @@ Vector3 CUnityTransform::GetPosition() const
 	}
 
 	return *reinterpret_cast<Vector3*>(&Intermediate);
+}
+
+Quaternion CUnityTransform::GetRotation() const
+{
+	if (IsInvalid() || m_Vertices.empty() || m_Indices.empty())
+		return Quaternion::Identity();
+
+	// Extract local rotation from this transform's vertex
+	auto ExtractQuaternion = [](const VertexEntry& vertex) -> Quaternion {
+		// The Quaternion is stored in vertex.Quaternion as an __m128i
+		// Extract all 4 components using SSE shuffle
+		float qx = _mm_cvtss_f32(_mm_castsi128_ps(vertex.Quaternion));
+		float qy = _mm_cvtss_f32(_mm_castsi128_ps(_mm_shuffle_epi32(vertex.Quaternion, 0x55)));
+		float qz = _mm_cvtss_f32(_mm_castsi128_ps(_mm_shuffle_epi32(vertex.Quaternion, 0xAA)));
+		float qw = _mm_cvtss_f32(_mm_castsi128_ps(_mm_shuffle_epi32(vertex.Quaternion, 0xFF)));
+		return Quaternion{ qx, qy, qz, qw };
+	};
+
+	// Start with this transform's local rotation
+	Quaternion worldRot = ExtractQuaternion(m_Vertices[m_Index]);
+	
+	// Walk up the hierarchy, multiplying rotations (parent * child)
+	auto DependencyIndex = m_Indices[m_Index];
+	static constexpr size_t MaxIterations = 128;
+	size_t IterationCount = 0;
+
+	while (DependencyIndex >= 0)
+	{
+		if (static_cast<size_t>(DependencyIndex) >= m_Vertices.size() || 
+		    static_cast<size_t>(DependencyIndex) >= m_Indices.size())
+			break;
+
+		IterationCount++;
+		if (IterationCount >= MaxIterations)
+			break;
+
+		Quaternion parentRot = ExtractQuaternion(m_Vertices[DependencyIndex]);
+		worldRot = parentRot * worldRot; // Combine rotations: parent * child
+
+		DependencyIndex = m_Indices[DependencyIndex];
+	}
+
+	return worldRot;
+}
+
+bool CUnityTransform::CompleteInit()
+{
+	auto Conn = DMA_Connection::GetInstance();
+	auto PID = EFT::GetProcess().GetPID();
+
+	// Step 1: Read hierarchy address and index (synchronously)
+	VMMDLL_MemReadEx(Conn->GetHandle(), PID,
+		m_EntityAddress + Offsets::CUnityTransform::pTransformHierarchy,
+		reinterpret_cast<PBYTE>(&m_HierarchyAddress), sizeof(uintptr_t), nullptr, VMMDLL_FLAG_NOCACHE);
+
+	VMMDLL_MemReadEx(Conn->GetHandle(), PID,
+		m_EntityAddress + Offsets::CUnityTransform::Index,
+		reinterpret_cast<PBYTE>(&m_Index), sizeof(int32_t), nullptr, VMMDLL_FLAG_NOCACHE);
+
+	// Validate
+	if (!m_HierarchyAddress || m_Index < 0 || m_Index > 4000)
+	{
+		SetInvalid();
+		return false;
+	}
+
+	// Step 2: Read indices and vertices addresses
+	VMMDLL_MemReadEx(Conn->GetHandle(), PID,
+		m_HierarchyAddress + Offsets::CTransformHierarchy::pIndices,
+		reinterpret_cast<PBYTE>(&m_IndicesAddress), sizeof(uintptr_t), nullptr, VMMDLL_FLAG_NOCACHE);
+
+	VMMDLL_MemReadEx(Conn->GetHandle(), PID,
+		m_HierarchyAddress + Offsets::CTransformHierarchy::pVertices,
+		reinterpret_cast<PBYTE>(&m_VerticesAddress), sizeof(uintptr_t), nullptr, VMMDLL_FLAG_NOCACHE);
+
+	if (!m_IndicesAddress || !m_VerticesAddress)
+	{
+		SetInvalid();
+		return false;
+	}
+
+	// Step 3: Read indices array
+	m_Indices.resize(static_cast<size_t>(m_Index) + 1);
+	VMMDLL_MemReadEx(Conn->GetHandle(), PID, m_IndicesAddress,
+		reinterpret_cast<PBYTE>(m_Indices.data()), sizeof(uint32_t) * m_Indices.size(),
+		nullptr, VMMDLL_FLAG_NOCACHE);
+
+	// Validate indices
+	if (m_Indices.empty() || m_Indices[m_Index] > 4000)
+	{
+		SetInvalid();
+		return false;
+	}
+
+	// Step 4: Read vertices array
+	size_t requiredVertices = static_cast<size_t>(m_Indices[m_Index]) + 1;
+	m_Vertices.resize(requiredVertices);
+	VMMDLL_MemReadEx(Conn->GetHandle(), PID, m_VerticesAddress,
+		reinterpret_cast<PBYTE>(m_Vertices.data()), sizeof(VertexEntry) * m_Vertices.size(),
+		nullptr, VMMDLL_FLAG_NOCACHE);
+
+	return true;
+}
+
+bool CUnityTransform::SyncUpdate()
+{
+	if (IsInvalid() || m_Indices.empty() || !m_VerticesAddress)
+		return false;
+
+	auto Conn = DMA_Connection::GetInstance();
+	auto PID = EFT::GetProcess().GetPID();
+
+	// Read vertices synchronously
+	size_t requiredSize = static_cast<size_t>(m_Indices[m_Index]) + 1;
+	if (m_Vertices.size() < requiredSize)
+		m_Vertices.resize(requiredSize);
+
+	DWORD bytesRead = 0;
+	VMMDLL_MemReadEx(Conn->GetHandle(), PID, m_VerticesAddress,
+		reinterpret_cast<PBYTE>(m_Vertices.data()), sizeof(VertexEntry) * requiredSize,
+		&bytesRead, VMMDLL_FLAG_NOCACHE);
+
+	return bytesRead == sizeof(VertexEntry) * requiredSize;
 }
 
 void CUnityTransform::Print()

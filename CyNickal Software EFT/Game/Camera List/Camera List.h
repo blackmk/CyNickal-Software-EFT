@@ -10,12 +10,15 @@ public:
 	static bool W2S(const Vector3 WorldPosition, Vector2& ScreenPosition);
 	static bool OpticW2S(const Vector3 WorldPosition, Vector2& ScreenPosition);
 	static CCamera* GetSelectedOptic();
+	static bool IsScoped();
 
 	static void QuickUpdateNecessaryCameras(DMA_Connection* Conn);
 	static inline uint32_t m_OpticIndex{ 0 };
+	static inline bool m_bScoped{ false };
 	static float GetOpticRadius();
 	static Vector2 GetOpticCenter();
 	static void SetOpticRadius(float Width);
+
 
 private:
 	static inline std::vector<CCamera> m_CameraCache{};
@@ -28,4 +31,6 @@ private:
 	static CCamera* SearchCameraCacheByName(const std::string& Name);
 	static std::vector<CCamera*> GetPotentialOpticCameras();
 	static CCamera* FindWinningOptic(const std::vector<CCamera*>& PotentialOpticCams);
+	static void UpdateOpticSelection();
+	static void UpdateOpticRadius();
 };

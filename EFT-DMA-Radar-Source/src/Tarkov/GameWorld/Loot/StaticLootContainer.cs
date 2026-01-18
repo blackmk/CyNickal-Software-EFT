@@ -1,0 +1,140 @@
+﻿/*
+ * Lone EFT DMA Radar
+ * Brought to you by Lone (Lone DMA)
+ * 
+MIT License
+
+Copyright (c) 2025 Lone DMA
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+ *
+*/
+
+using LoneEftDmaRadar.Misc;
+using LoneEftDmaRadar.Tarkov.GameWorld.Player;
+using LoneEftDmaRadar.UI.Radar.Maps;
+using LoneEftDmaRadar.UI.Skia;
+using LoneEftDmaRadar.Web.TarkovDev.Data;
+
+namespace LoneEftDmaRadar.Tarkov.GameWorld.Loot
+{
+    public sealed class StaticLootContainer : LootItem
+    {
+        private static readonly TarkovMarketItem _default = new();
+        private readonly ulong _interactiveClass;
+
+        public override string Name { get; }
+
+        /// <summary>
+        /// Container's BSG ID.
+        /// </summary>
+        public override string ID { get; }
+
+        /// <summary>
+        /// True if the container has been searched by LocalPlayer or another Networked Entity.
+        /// </summary>
+        public bool Searched { get; private set; }
+
+        public StaticLootContainer(string containerId, Vector3 position)
+            : base(_default, position)
+        {
+            ArgumentException.ThrowIfNullOrWhiteSpace(containerId, nameof(containerId));
+            ID = containerId;
+            if (TarkovDataManager.AllContainers.TryGetValue(containerId, out var containerData))
+            {
+                Name = containerData.ShortName ?? "Container";
+            }
+            else
+            {
+                Name = "Container";
+            }
+        }
+
+        // Internal constructor for LootManager with InteractiveClass
+        internal StaticLootContainer(string containerId, Vector3 position, ulong interactiveClass)
+            : this(containerId, position)
+        {
+            _interactiveClass = interactiveClass;
+        }
+
+        /// <summary>
+        /// Updates the searched status of this container by reading memory.
+        /// Called periodically by LootManager.
+        /// </summary>
+        internal void UpdateSearchedStatus()
+        {
+            if (_interactiveClass == 0)
+                return;
+
+            try
+            {
+                var interactingPlayer = Memory.ReadValue<ulong>(_interactiveClass + Offsets.LootableContainer.InteractingPlayer);
+                if (interactingPlayer != 0)
+                {
+                    Searched = true;
+                }
+            }
+            catch
+            {
+            }
+        }
+
+        public override string GetUILabel() => this.Name;
+
+        public override void Draw(SKCanvas canvas, EftMapParams mapParams, LocalPlayer localPlayer)
+        {
+            if (!App.Config.Containers.Enabled)
+                return;
+
+            if (App.Config.Containers.HideSearched && Searched)
+                return;
+
+            if (Position.WithinDistance(localPlayer.Position, App.Config.Containers.DrawDistance))
+            {
+                var heightDiff = Position.Y - localPlayer.ReferenceHeight;
+                var point = Position.ToMapPos(mapParams.Map).ToZoomedPos(mapParams);
+                MouseoverPosition = new Vector2(point.X, point.Y);
+                SKPaints.ShapeOutline.StrokeWidth = 2f;
+                if (heightDiff > 1.45) // loot is above player
+                {
+                    using var path = point.GetUpArrow(2.5f);
+                    canvas.DrawPath(path, SKPaints.ShapeOutline);
+                    canvas.DrawPath(path, SKPaints.PaintContainerLoot);
+                }
+                else if (heightDiff < -1.45) // loot is below player
+                {
+                    using var path = point.GetDownArrow(2.5f);
+                    canvas.DrawPath(path, SKPaints.ShapeOutline);
+                    canvas.DrawPath(path, SKPaints.PaintContainerLoot);
+                }
+                else // loot is level with player
+                {
+                    var size = 2.5f * App.Config.UI.UIScale;
+                    canvas.DrawCircle(point, size, SKPaints.ShapeOutline);
+                    canvas.DrawCircle(point, size, SKPaints.PaintContainerLoot);
+                }
+            }
+        }
+
+        public override void DrawMouseover(SKCanvas canvas, EftMapParams mapParams, LocalPlayer localPlayer)
+        {
+            Position.ToMapPos(mapParams.Map).ToZoomedPos(mapParams).DrawMouseoverText(canvas, Name);
+        }
+    }
+}

@@ -18,6 +18,7 @@ public:
 	const uint32_t GetSizeInSlots() const;
 	const float GetPricePerSlot() const;
 	const uint32_t GetStackCount() const { return m_StackCount; }
+	std::string GetTemplateId() const { return std::string(m_TarkovID.begin(), m_TarkovID.end()); }
 
 private:
 	std::unique_ptr<CItemTemplate> m_pItemTemplate{ nullptr };

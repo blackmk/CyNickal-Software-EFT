@@ -35,6 +35,13 @@ void CClientPlayer::PrepareRead_2(VMMDLL_SCATTER_HANDLE vmsh)
 	VMMDLL_Scatter_PrepareEx(vmsh, m_MovementContextAddress + Offsets::CMovementContext::Rotation, sizeof(float), reinterpret_cast<BYTE*>(&m_Yaw), nullptr);
 	VMMDLL_Scatter_PrepareEx(vmsh, m_ProceduralWeaponAnimationAddress + Offsets::CProceduralWeaponAnimation::pOptics, sizeof(uintptr_t), reinterpret_cast<BYTE*>(&m_OpticsAddress), nullptr);
 	VMMDLL_Scatter_PrepareEx(vmsh, m_ProceduralWeaponAnimationAddress + Offsets::CProceduralWeaponAnimation::bAiming, sizeof(std::byte), reinterpret_cast<BYTE*>(&m_AimingByte), nullptr);
+
+	// Initialize firearm manager for aimline support
+	if (m_HandsControllerAddress)
+	{
+		m_pFirearmManager = std::make_unique<CFirearmManager>(m_HandsControllerAddress);
+		m_pFirearmManager->Update(vmsh);
+	}
 }
 
 void CClientPlayer::PrepareRead_3(VMMDLL_SCATTER_HANDLE vmsh)
@@ -147,13 +154,43 @@ void CClientPlayer::QuickRead(VMMDLL_SCATTER_HANDLE vmsh)
 	if (IsInvalid())
 		return;
 
-	if(m_pHands)
+	m_bScoped = false;
+
+	if (m_pHands)
 		m_pHands->QuickRead(vmsh, EPlayerType::eMainPlayer);
 
 	VMMDLL_Scatter_PrepareEx(vmsh, m_MovementContextAddress + Offsets::CMovementContext::Rotation, sizeof(float), reinterpret_cast<BYTE*>(&m_Yaw), nullptr);
 	VMMDLL_Scatter_PrepareEx(vmsh, m_EntityAddress + Offsets::CPlayer::pHandsController, sizeof(uintptr_t), reinterpret_cast<BYTE*>(&m_HandsControllerAddress), nullptr);
 	VMMDLL_Scatter_PrepareEx(vmsh, m_ProceduralWeaponAnimationAddress + Offsets::CProceduralWeaponAnimation::bAiming, sizeof(std::byte), reinterpret_cast<BYTE*>(&m_AimingByte), nullptr);
+
+	if (m_ProceduralWeaponAnimationAddress)
+	{
+		VMMDLL_Scatter_PrepareEx(vmsh, m_ProceduralWeaponAnimationAddress + Offsets::CProceduralWeaponAnimation::pOptics, sizeof(uintptr_t), reinterpret_cast<BYTE*>(&m_OpticsAddress), nullptr);
+	}
+
+	if (m_OpticsAddress)
+	{
+		VMMDLL_Scatter_PrepareEx(vmsh, m_OpticsAddress + Offsets::CUnityList::ArrayBase, sizeof(uintptr_t), reinterpret_cast<BYTE*>(&m_OpticItemsArray), nullptr);
+		VMMDLL_Scatter_PrepareEx(vmsh, m_OpticsAddress + Offsets::CUnityList::Count, sizeof(int32_t), reinterpret_cast<BYTE*>(&m_OpticCount), nullptr);
+	}
+
+	if (m_OpticItemsArray)
+		VMMDLL_Scatter_PrepareEx(vmsh, m_OpticItemsArray + 0x20, sizeof(uintptr_t), reinterpret_cast<BYTE*>(&m_FirstSightNBone), nullptr);
+
+	if (m_FirstSightNBone)
+		VMMDLL_Scatter_PrepareEx(vmsh, m_FirstSightNBone + Offsets::CSightNBone::pMod, sizeof(uintptr_t), reinterpret_cast<BYTE*>(&m_FirstSightComponent), nullptr);
+
+	if (m_FirstSightComponent)
+		VMMDLL_Scatter_PrepareEx(vmsh, m_FirstSightComponent + Offsets::CSightComponent::ScopeZoomValue, sizeof(float), reinterpret_cast<BYTE*>(&m_ScopeZoomValue), nullptr);
+
+	// Update firearm manager for aimline
+	if (m_pFirearmManager)
+	{
+		m_pFirearmManager->Update(vmsh);
+		m_pFirearmManager->QuickUpdate(vmsh);
+	}
 }
+
 
 void CClientPlayer::Finalize()
 {
@@ -170,9 +207,31 @@ void CClientPlayer::QuickFinalize()
 	if (IsInvalid())
 		return;
 
+	if (!IsAiming() || m_OpticsAddress == 0)
+	{
+		m_OpticCount = 0;
+		m_FirstSightComponent = 0;
+		m_ScopeZoomValue = 1.0f;
+		m_bScoped = false;
+	}
+
+	if (m_OpticCount <= 0 || m_FirstSightComponent == 0)
+		m_ScopeZoomValue = 1.0f;
+
+	m_bScoped = IsAiming() && m_ScopeZoomValue > 1.0f && m_OpticCount > 0 && m_FirstSightComponent != 0;
+
+	// Finalize firearm manager for aimline
+	if (m_pFirearmManager)
+		m_pFirearmManager->Finalize();
+
 	if (m_HandsControllerAddress == m_PreviousHandsControllerAddress) return;
+
 
 	m_PreviousHandsControllerAddress = m_HandsControllerAddress;
 	m_pHands = std::make_unique<CHeldItem>(m_HandsControllerAddress);
 	m_pHands->CompleteUpdate(EPlayerType::eMainPlayer);
+
+	// Recreate firearm manager when hands controller changes
+	if (m_HandsControllerAddress)
+		m_pFirearmManager = std::make_unique<CFirearmManager>(m_HandsControllerAddress);
 }

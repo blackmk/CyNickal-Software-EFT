@@ -4,7 +4,7 @@
 
 #include "GUI/Fonts/Fonts.h"
 #include "GUI/Main Menu/Main Menu.h"
-#include "GUI/Radar/Radar.h"
+#include "GUI/Radar/Radar2D.h"
 #include "GUI/Fuser/Fuser.h"
 #include "GUI/Aimbot/Aimbot.h"
 #include "GUI/Player Table/Player Table.h"
@@ -13,6 +13,8 @@
 #include "GUI/Keybinds/Keybinds.h"
 #include "GUI/Config/Config.h"
 #include "GUI/Flea Bot/Flea Bot.h"
+
+#include "MonitorHelper.h"
 
 // Custom dark theme with red accents (matching reference design)
 void ApplyCustomTheme(ImGuiStyle& style)
@@ -138,26 +140,20 @@ void Render(ImGuiContext* ctx)
 
 	ImGui::PushFont(Fonts::m_IBMPlexMonoSemiBold, 16.0f);
 
-	ImGui::DockSpaceOverViewport(ImGui::GetMainViewport()->ID, nullptr, ImGuiDockNodeFlags_PassthruCentralNode);
-
-	// Overlays (keep as separate windows)
+	// Note: DockSpace removed - MainMenu now fills the entire viewport
+	// Fuser 3D ESP overlay (stays as separate transparent window for multi-monitor)
 	Fuser::Render();
-	Radar::Render();
 	
-	// Data tables (keep as separate toggleable windows)
-	PlayerTable::Render();
-	ItemTable::Render();
-	
-	// Main unified control panel (all settings integrated here)
+	// Main unified control panel (fills entire window)
 	MainMenu::Render();
-
 
 	ImGui::PopFont();
 }
 
 bool MainWindow::OnFrame()
 {
-	PreFrame();
+	if (!PreFrame())
+		return false;  // Window closed, signal shutdown
 
 	Render(ImGui::GetCurrentContext());
 
@@ -261,7 +257,11 @@ bool MainWindow::Initialize()
 
 	wc = { sizeof(wc), CS_CLASSDC, WndProc, 0L, 0L, GetModuleHandle(nullptr), nullptr, nullptr, nullptr, nullptr, L"MainWindow", nullptr };
 	::RegisterClassExW(&wc);
-	g_hWnd = ::CreateWindowEx(NULL, wc.lpszClassName, L"EFT DMA", WS_OVERLAPPEDWINDOW, 100, 100, 800, 800, nullptr, nullptr, wc.hInstance, nullptr);
+	g_hWnd = ::CreateWindowEx(NULL, wc.lpszClassName, L"CyNickal Software", WS_OVERLAPPEDWINDOW, 100, 100, 1200, 800, nullptr, nullptr, wc.hInstance, nullptr);
+	
+	// Position window on selected monitor before D3D init
+	// MonitorHelper::MoveWindowToMonitor(g_hWnd, Fuser::m_SelectedMonitor); // Removed per plan
+
 	// Initialize Direct3D
 	if (!CreateDeviceD3D(g_hWnd))
 	{
@@ -271,7 +271,7 @@ bool MainWindow::Initialize()
 	}
 
 	// Show the window
-	::ShowWindow(g_hWnd, SW_SHOWDEFAULT);
+	::ShowWindow(g_hWnd, SW_SHOWNORMAL); // Changed from SW_MAXIMIZE
 	::UpdateWindow(g_hWnd);
 
 	// Setup Dear ImGui context
@@ -306,11 +306,17 @@ bool MainWindow::Initialize()
 	ImGui_ImplWin32_Init(g_hWnd);
 	ImGui_ImplDX11_Init(g_pd3dDevice, g_pd3dDeviceContext);
 
+	// Initialize Radar
+	Radar2D::Initialize(g_pd3dDevice);
+
 	return false;
 }
 
 bool MainWindow::Cleanup()
 {
+	// Radar cleanup
+	Radar2D::Cleanup();
+
 	// Cleanup
 	ImGui_ImplDX11_Shutdown();
 	ImGui_ImplWin32_Shutdown();

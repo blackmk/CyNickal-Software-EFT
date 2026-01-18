@@ -5,42 +5,72 @@
 #include "GUI/Player Table/Player Table.h"
 #include "GUI/Item Table/Item Table.h"
 #include "GUI/Fuser/Fuser.h"
-#include "GUI/Radar/Radar.h"
+#include "GUI/Radar/Radar2D.h"
 #include "GUI/Aimbot/Aimbot.h"
 #include "GUI/ESP/ESPSettings.h"
 #include "GUI/ESP/ESPPreview.h"
 #include <string>
 #include <filesystem>
+#include <algorithm>
+#include <fstream>
+#include <chrono>
+#include <ctime>
 #include "GUI/Keybinds/Keybinds.h"
+#include "GUI/Main Window/MonitorHelper.h"
+#include "GUI/Main Window/Main Window.h"
 #include "GUI/Config/Config.h"
 #include "GUI/Flea Bot/Flea Bot.h"
 #include "GUI/Fuser/Draw/Players.h"
 #include "GUI/Fuser/Draw/Loot.h"
 #include "GUI/Fuser/Draw/Exfils.h"
-#include "GUI/Radar/Draw/Radar Loot.h"
-#include "GUI/Radar/Draw/Radar Exfils.h"
+
 #include "Game/Camera List/Camera List.h"
 #include "DebugMode.h"
 #include "GUI/KmboxSettings/KmboxSettings.h"
+
+// ============================================================================
+// Logging helpers
+// ============================================================================
+static void LogUi(const std::string& msg)
+{
+	using namespace std::chrono;
+	try
+	{
+		std::filesystem::create_directories("Logs");
+		auto now = system_clock::now();
+		auto t = system_clock::to_time_t(now);
+		std::tm tm{};
+		localtime_s(&tm, &t);
+		char buf[32]{};
+		std::strftime(buf, sizeof(buf), "%Y-%m-%d %H:%M:%S", &tm);
+		std::ofstream out("Logs/ui.log", std::ios::app);
+		if (out)
+		{
+			out << buf << " " << msg << "\n";
+		}
+	}
+	catch (...)
+	{
+		// swallow logging errors
+	}
+}
 
 // ============================================================================
 // UI State
 // ============================================================================
 namespace MainMenuState
 {
-	// Sidebar selection
-	enum class ECategory { Combat, Visuals, Other };
+	// Sidebar selection - Radar is the default/first item
+	enum class ECategory { Radar, Combat, Visuals, Other };
 	enum class ECombatItem { Aimbot };
-	enum class EVisualsItem { EntityESP, ObjectsESP, Visuals, Radar };
-	enum class EOtherItem { Misc, Settings };
+	enum class EVisualsItem { EntityESP, WorldESP, RadarConfig };  // Merged Objects+Visuals into WorldESP
+	enum class EOtherItem { FleaBot, Tools, Settings };  // FleaBot separate, Misc->Tools
 	
-	static ECategory selectedCategory = ECategory::Visuals;
+	static ECategory selectedCategory = ECategory::Radar;  // Default to Radar
 	static int selectedCombatItem = 0;   // 0=Aimbot
-	static int selectedVisualsItem = 2;  // 0=EntityESP, 1=ObjectsESP, 2=Visuals, 3=Radar
-	static int selectedOtherItem = 0;    // 0=Misc, 1=Settings
-	
-	// Visuals sub-tabs
-	static int visualsSubTab = 3; // 0=World, 1=Saved Locations, 2=Rename Object, 3=Misc
+	static int selectedVisualsItem = 0;  // 0=EntityESP, 1=WorldESP, 2=RadarConfig
+	static int selectedOtherItem = 0;    // 0=FleaBot, 1=Tools, 2=Settings
+	static bool bLogInputState = false;
 }
 
 // ============================================================================
@@ -111,14 +141,18 @@ static bool CustomToggle(const char* label, bool* v)
 }
 
 // Section panel with title and optional subtitle
-static void BeginPanel(const char* title, const char* subtitle = nullptr)
+// fixedHeight > 0 = use fixed height, fixedHeight = 0 = auto-resize to content
+static void BeginPanel(const char* title, const char* subtitle = nullptr, float fixedHeight = 0.0f)
 {
 	ImGui::PushStyleColor(ImGuiCol_ChildBg, ImVec4(0.06f, 0.06f, 0.06f, 1.0f));
 	ImGui::PushStyleVar(ImGuiStyleVar_ChildRounding, 0.0f);
 	ImGui::PushStyleVar(ImGuiStyleVar_ChildBorderSize, 1.0f);
 	ImGui::PushStyleColor(ImGuiCol_Border, ImVec4(0.25f, 0.25f, 0.25f, 1.0f));
 	
-	ImGui::BeginChild(title, ImVec2(0, 0), true);
+	if (fixedHeight > 0.0f)
+		ImGui::BeginChild(title, ImVec2(0, fixedHeight), ImGuiChildFlags_Borders);
+	else
+		ImGui::BeginChild(title, ImVec2(0, 0), ImGuiChildFlags_Borders | ImGuiChildFlags_AutoResizeY);
 	
 	// Title with red line
 	ImVec2 pos = ImGui::GetCursorScreenPos();
@@ -245,8 +279,12 @@ static void RenderAimbotContent()
 {
 	float panelWidth = ImGui::GetContentRegionAvail().x * 0.48f;
 	
+	// ========================================================================
+	// LEFT COLUMN - Core Settings
+	// ========================================================================
 	ImGui::BeginChild("AimbotLeft", ImVec2(panelWidth, 0), false);
 	{
+		// --- Aimbot Settings Panel ---
 		BeginPanel("Aimbot Settings", "Hardware-level aim assistance");
 		
 		CustomToggle("Enable Aimbot", &Aimbot::bMasterToggle);
@@ -264,22 +302,195 @@ static void RenderAimbotContent()
 		CustomSlider("##Deadzone", &Aimbot::fDeadzoneFov, 1.0f, 20.0f, "%.1f px");
 		
 		EndPanel();
+
+		ImGui::Spacing();
+
+		// --- Targeting Panel ---
+		BeginPanel("Targeting", "Bone selection & priority");
+
+		// Target Bone Combo
+		const char* boneItems[] = { "Head", "Neck", "Chest", "Torso", "Pelvis", "Random", "Closest Visible" };
+		int currentBone = (int)Aimbot::eTargetBone;
+		ImGui::Text("Target Bone");
+		ImGui::SetNextItemWidth(180.0f);
+		if (ImGui::Combo("##TargetBone", &currentBone, boneItems, IM_ARRAYSIZE(boneItems)))
+		{
+			Aimbot::eTargetBone = (ETargetBone)currentBone;
+		}
+
+		// Random Bone Sliders (shown only when Random is selected)
+		if (Aimbot::eTargetBone == ETargetBone::RandomBone)
+		{
+			ImGui::Indent();
+			ImGui::TextColored(ImVec4(0.5f, 0.5f, 0.5f, 1.0f), "Random Chances:");
+			bool bWeightsChanged = false;
+			ImGui::Text("Head %%");
+			CustomSlider("##RHead", &Aimbot::fRandomHeadChance, 0.0f, 100.0f, "%.0f%%");
+			bWeightsChanged |= ImGui::IsItemDeactivatedAfterEdit();
+			ImGui::Text("Neck %%");
+			CustomSlider("##RNeck", &Aimbot::fRandomNeckChance, 0.0f, 100.0f, "%.0f%%");
+			bWeightsChanged |= ImGui::IsItemDeactivatedAfterEdit();
+			ImGui::Text("Chest %%");
+			CustomSlider("##RChest", &Aimbot::fRandomChestChance, 0.0f, 100.0f, "%.0f%%");
+			bWeightsChanged |= ImGui::IsItemDeactivatedAfterEdit();
+			ImGui::Text("Torso %%");
+			CustomSlider("##RTorso", &Aimbot::fRandomTorsoChance, 0.0f, 100.0f, "%.0f%%");
+			bWeightsChanged |= ImGui::IsItemDeactivatedAfterEdit();
+			ImGui::Text("Pelvis %%");
+			CustomSlider("##RPelvis", &Aimbot::fRandomPelvisChance, 0.0f, 100.0f, "%.0f%%");
+			bWeightsChanged |= ImGui::IsItemDeactivatedAfterEdit();
+
+			float total = Aimbot::fRandomHeadChance + Aimbot::fRandomNeckChance + Aimbot::fRandomChestChance + Aimbot::fRandomTorsoChance + Aimbot::fRandomPelvisChance;
+			ImGui::TextColored(ImVec4(0.5f, 0.5f, 0.5f, 1.0f), "Total: %.0f%%", total);
+
+			if (bWeightsChanged)
+				Aimbot::NormalizeRandomWeights();
+
+			ImGui::Unindent();
+		}
+
+		ImGui::Spacing();
+
+		// Targeting Mode
+		const char* modeItems[] = { "Closest to Crosshair", "Closest Distance" };
+		int currentMode = (int)Aimbot::eTargetingMode;
+		ImGui::Text("Priority");
+		ImGui::SetNextItemWidth(180.0f);
+		if (ImGui::Combo("##TargetMode", &currentMode, modeItems, IM_ARRAYSIZE(modeItems)))
+		{
+			Aimbot::eTargetingMode = (ETargetingMode)currentMode;
+		}
+
+		ImGui::Spacing();
+		
+		ImGui::Text("Max Distance");
+		CustomSlider("##MaxDist", &Aimbot::fMaxDistance, 0.0f, 1000.0f, "%.0f m");
+		if (ImGui::IsItemHovered()) ImGui::SetTooltip("0 = Unlimited");
+
+		EndPanel();
 	}
 	ImGui::EndChild();
 	
 	ImGui::SameLine();
 	
+	// ========================================================================
+	// RIGHT COLUMN - Behavior, Filters & Visuals
+	// ========================================================================
 	ImGui::BeginChild("AimbotRight", ImVec2(0, 0), false);
 	{
-		BeginPanel("Smoothing", "Aim speed control");
+		// --- Behavior Panel (combines Advanced + Experimental) ---
+		BeginPanel("Behavior", "Targeting logic & experimental");
 		
+		// Fireport Experimental (collapsible, above Prediction)
+		ImGui::TextColored(ImVec4(1.0f, 0.8f, 0.2f, 1.0f), "Experimental");
+		
+		if (ImGui::TreeNode("Fireport Aiming"))
+		{
+			CustomToggle("Use Fireport Aiming", &Aimbot::bUseFireportAiming);
+			if (ImGui::IsItemHovered()) ImGui::SetTooltip("Aim based on actual barrel direction.\nCompensates for weapon sway.");
+			
+			if (Aimbot::bUseFireportAiming)
+			{
+				ImGui::Text("Projection Distance");
+				CustomSlider("##FireportDist", &Aimbot::fFireportProjectionDistance, 10.0f, 500.0f, "%.0f m");
+			}
+			
+			ImGui::Spacing();
+			CustomToggle("Draw Aim Point Dot", &Aimbot::bDrawAimPointDot);
+			if (ImGui::IsItemHovered()) ImGui::SetTooltip("Shows where weapon is actually aimed.");
+			
+			if (Aimbot::bDrawAimPointDot)
+			{
+				ImGui::Text("Dot Size");
+				CustomSlider("##DotSize", &Aimbot::fAimPointDotSize, 1.0f, 20.0f, "%.1f px");
+				ColorPickerButton("Dot Color", Aimbot::aimPointDotColor);
+			}
+			
+			CustomToggle("Debug Visualization", &Aimbot::bDrawDebugVisualization);
+			if (ImGui::IsItemHovered()) ImGui::SetTooltip("Show screen center vs fireport aim point.");
+			
+			ImGui::TreePop();
+		}
+		
+		if (ImGui::TreeNode("Ballistics Prediction"))
+		{
+			CustomToggle("Enable Prediction", &Aimbot::bEnablePrediction);
+			if (ImGui::IsItemHovered()) ImGui::SetTooltip("Compensate for bullet drop and travel time\nusing live ammo ballistics data.");
+
+			if (Aimbot::bEnablePrediction)
+			{
+				CustomToggle("Show Trajectory", &Aimbot::bShowTrajectory);
+				if (ImGui::IsItemHovered()) ImGui::SetTooltip("Visualize the predicted bullet path.");
+			}
+			
+			ImGui::TreePop();
+		}
+
+		EndPanel();
+
+		ImGui::Spacing();
+
+		// --- Target Filters Panel ---
+		BeginPanel("Target Filters", "Select who to target");
+
+		CustomToggle("PMC", &Aimbot::bTargetPMC);
+		CustomToggle("Player Scav", &Aimbot::bTargetPlayerScav);
+		CustomToggle("AI Scav", &Aimbot::bTargetAIScav);
+		CustomToggle("Boss", &Aimbot::bTargetBoss);
+		CustomToggle("Raider/Rogue", &Aimbot::bTargetRaider);
+		CustomToggle("Guard", &Aimbot::bTargetGuard);
+		
+		EndPanel();
+
+		ImGui::Spacing();
+
+		// --- Visuals Panel (combines Smoothing + Aimline) ---
+		BeginPanel("Visuals", "Smoothing & aim visualization");
+		
+		// Smoothing section
 		ImGui::Text("Dampen Factor");
 		CustomSlider("##Dampen", &Aimbot::fDampen, 0.01f, 1.0f, "%.2f");
+		ImGui::TextColored(ImVec4(0.5f, 0.5f, 0.5f, 1.0f), "Lower = smoother, Higher = faster");
 		
 		ImGui::Spacing();
-		ImGui::TextColored(ImVec4(0.5f, 0.5f, 0.5f, 1.0f), "Lower = smoother but slower");
-		ImGui::TextColored(ImVec4(0.5f, 0.5f, 0.5f, 1.0f), "Higher = faster but obvious");
+		ImGui::Separator();
+		ImGui::Spacing();
 		
+		// Aimline section - grayed out if trajectory is enabled
+		bool trajectoryEnabled = Aimbot::bEnablePrediction && Aimbot::bShowTrajectory;
+		
+		if (trajectoryEnabled)
+		{
+			Aimbot::bDrawAimline = false; // Disable aimline automatically when trajectory is active
+			
+			ImGui::BeginDisabled(true);
+			CustomToggle("Draw Weapon Aimline", &Aimbot::bDrawAimline);
+			ImGui::EndDisabled();
+			if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled))
+				ImGui::SetTooltip("Disabled: Trajectory visualization already shows aim direction.");
+		}
+		else
+		{
+			CustomToggle("Draw Weapon Aimline", &Aimbot::bDrawAimline);
+		}
+		
+		ImGui::Spacing();
+		CustomToggle("Only Show on Aim", &Aimbot::bOnlyOnAim);
+		
+		// Show aimline settings if enabled (and not overridden by trajectory)
+
+		if (Aimbot::bDrawAimline && !trajectoryEnabled)
+		{
+			ImGui::Text("Aimline Length");
+			CustomSlider("##AimlineLen", &Aimbot::fAimlineLength, 1.0f, 1000.0f, "%.0f m");
+			
+			ImGui::Text("Aimline Thickness");
+			CustomSlider("##AimlineThick", &Aimbot::fAimlineThickness, 1.0f, 10.0f, "%.1f px");
+
+			ImGui::Spacing();
+			ColorPickerButton("Aimline Color", Aimbot::aimlineColor);
+		}
+
 		EndPanel();
 	}
 	ImGui::EndChild();
@@ -287,69 +498,29 @@ static void RenderAimbotContent()
 
 static void RenderEntityESPContent()
 {
-	float panelWidth = ImGui::GetContentRegionAvail().x * 0.45f;
+	float totalWidth = ImGui::GetContentRegionAvail().x;
+	float totalHeight = ImGui::GetContentRegionAvail().y;
+	float previewWidth = totalWidth * 0.35f;  // 35% for preview
+	float settingsWidth = totalWidth * 0.65f; // 65% for settings
 	
-	ImGui::BeginChild("ESPSettingsLeft", ImVec2(panelWidth, 0), false);
+	// ========================================================================
+	// LEFT SIDE - Preview Panel (always visible)
+	// ========================================================================
+	ImGui::BeginChild("ESPPreviewPanel", ImVec2(previewWidth, 0), false);
 	{
-		BeginPanel("Enemy ESP", "Visual configuration");
+		BeginPanel("ESP Preview", "Live visualization", totalHeight - 20.0f);
 		
+		// Master toggle at top of preview
 		CustomToggle("Enable Fuser (Master)", &Fuser::bMasterToggle);
 		ImGui::Spacing();
 		ImGui::Separator();
 		ImGui::Spacing();
-
-		using namespace ESPSettings::Enemy;
 		
-		CustomToggle("Box ESP##ESP", &bBoxEnabled);
-		if (bBoxEnabled) {
-			ImGui::SameLine();
-			ImGui::SetNextItemWidth(100.0f);
-			static const char* styles[] = { "Full", "Corners" };
-			ImGui::Combo("##BoxStyleESP", &boxStyle, styles, IM_ARRAYSIZE(styles));
-			
-			ColorPickerButton("Box Color##ESP", boxColor);
-			CustomToggle("Filled Box##ESP", &bBoxFilled);
-			if (bBoxFilled) ColorPickerButton("Fill Color##ESP", boxFillColor);
-			CustomSlider("##BoxThick", &boxThickness, 1.0f, 5.0f, "%.1f px");
-		}
-		
-		ImGui::Spacing();
-		ImGui::Separator();
-		ImGui::Spacing();
-		
-		CustomToggle("Skeleton##ESP", &bSkeletonEnabled);
-		if (bSkeletonEnabled) {
-			ColorPickerButton("Skeleton Color##ESP", skeletonColor);
-			CustomSlider("##SkeletonThick", &skeletonThickness, 1.0f, 5.0f, "%.1f px");
-			
-			if (ImGui::TreeNode("Bone Groups##ESP")) {
-				CustomToggle("Head/Neck##ESP", &bBonesHead);
-				CustomToggle("Spine/Pelvis##ESP", &bBonesSpine);
-				CustomToggle("Left Arm##ESP", &bBonesArmsL);
-				CustomToggle("Right Arm##ESP", &bBonesArmsR);
-				CustomToggle("Left Leg##ESP", &bBonesLegsL);
-				CustomToggle("Right Leg##ESP", &bBonesLegsR);
-				ImGui::TreePop();
-			}
-		}
-		
-		ImGui::Spacing();
-		ImGui::Separator();
-		ImGui::Spacing();
-		
-		CustomToggle("Name##ESP", &bNameEnabled);
-		if (bNameEnabled) ColorPickerButton("Name Color##ESP", nameColor);
-		
-		CustomToggle("Weapon##ESP", &bWeaponEnabled);
-		if (bWeaponEnabled) ColorPickerButton("Weapon Color##ESP", weaponColor);
-		
-		CustomToggle("Distance##ESP", &bDistanceEnabled);
-		if (bDistanceEnabled) ColorPickerButton("Distance Color##ESP", distanceColor);
-		
-		CustomToggle("Head Dot##ESP", &bHeadDotEnabled);
-		if (bHeadDotEnabled) {
-			ColorPickerButton("Dot Color##ESP", headDotColor);
-			CustomSlider("##DotRadius", &headDotRadius, 1.0f, 10.0f, "%.1f px");
+		// Render the preview using remaining space
+		ImVec2 previewAvail = ImGui::GetContentRegionAvail();
+		if (previewAvail.x > 50.0f && previewAvail.y > 100.0f)
+		{
+			ESPPreview::Render(previewAvail);
 		}
 		
 		EndPanel();
@@ -358,29 +529,162 @@ static void RenderEntityESPContent()
 	
 	ImGui::SameLine();
 	
-	ImGui::BeginChild("ESPSettingsRight", ImVec2(0, 0), false);
+	// ========================================================================
+	// RIGHT SIDE - 3-Column Settings
+	// ========================================================================
+	ImGui::BeginChild("ESPSettingsPanel", ImVec2(0, 0), false);
 	{
-		BeginPanel("Preview", "Live mannequin visual");
+		float colWidth = (settingsWidth - 30.0f) / 3.0f;  // 3 equal columns with spacing
 		
-		ImVec2 avail = ImGui::GetContentRegionAvail();
-		ESPPreview::Render(ImVec2(avail.x, avail.y - 10.0f));
+		// --- Column 1: Box ESP ---
+		ImGui::BeginChild("ESPCol1", ImVec2(colWidth, 0), false);
+		{
+			BeginPanel("Box ESP", nullptr);
+			
+			using namespace ESPSettings::Enemy;
+			
+			CustomToggle("Enable##Box", &bBoxEnabled);
+			
+			if (bBoxEnabled)
+			{
+				ImGui::Spacing();
+				
+				ImGui::Text("Style");
+				ImGui::SetNextItemWidth(-1);
+				static const char* styles[] = { "Full", "Corners" };
+				ImGui::Combo("##BoxStyle", &boxStyle, styles, IM_ARRAYSIZE(styles));
+				
+				ImGui::Spacing();
+				ColorPickerButton("Color##Box", boxColor);
+				
+				ImGui::Text("Thickness");
+				ImGui::SetNextItemWidth(-1);
+				ImGui::SliderFloat("##BoxThick", &boxThickness, 1.0f, 5.0f, "%.1f");
+				
+				ImGui::Spacing();
+				CustomToggle("Filled##Box", &bBoxFilled);
+				if (bBoxFilled)
+				{
+					ColorPickerButton("Fill##Box", boxFillColor);
+				}
+			}
+			
+			EndPanel();
+		}
+		ImGui::EndChild();
 		
-		EndPanel();
+		ImGui::SameLine();
+		
+		// --- Column 2: Skeleton ESP ---
+		ImGui::BeginChild("ESPCol2", ImVec2(colWidth, 0), false);
+		{
+			BeginPanel("Skeleton", nullptr);
+			
+			using namespace ESPSettings::Enemy;
+			
+			CustomToggle("Enable##Skel", &bSkeletonEnabled);
+			
+			if (bSkeletonEnabled)
+			{
+				ImGui::Spacing();
+				ColorPickerButton("Color##Skel", skeletonColor);
+				
+				ImGui::Text("Thickness");
+				ImGui::SetNextItemWidth(-1);
+				ImGui::SliderFloat("##SkelThick", &skeletonThickness, 1.0f, 5.0f, "%.1f");
+				
+				ImGui::Spacing();
+				ImGui::Separator();
+				ImGui::Spacing();
+				
+				ImGui::Text("Bone Groups");
+				CustomToggle("Head/Neck", &bBonesHead);
+				CustomToggle("Spine", &bBonesSpine);
+				CustomToggle("Left Arm", &bBonesArmsL);
+				CustomToggle("Right Arm", &bBonesArmsR);
+				CustomToggle("Left Leg", &bBonesLegsL);
+				CustomToggle("Right Leg", &bBonesLegsR);
+			}
+			
+			EndPanel();
+		}
+		ImGui::EndChild();
+		
+		ImGui::SameLine();
+		
+		// --- Column 3: Info ESP ---
+		ImGui::BeginChild("ESPCol3", ImVec2(0, 0), false);
+		{
+			BeginPanel("Info ESP", nullptr);
+			
+			using namespace ESPSettings::Enemy;
+			
+			CustomToggle("Name##Info", &bNameEnabled);
+			if (bNameEnabled)
+			{
+				ImGui::SameLine();
+				float col[4] = { nameColor.Value.x, nameColor.Value.y, nameColor.Value.z, nameColor.Value.w };
+				if (ImGui::ColorEdit4("##NameCol", col, ImGuiColorEditFlags_NoInputs | ImGuiColorEditFlags_NoLabel))
+					nameColor = ImColor(col[0], col[1], col[2], col[3]);
+			}
+			
+			CustomToggle("Weapon##Info", &bWeaponEnabled);
+			if (bWeaponEnabled)
+			{
+				ImGui::SameLine();
+				float col[4] = { weaponColor.Value.x, weaponColor.Value.y, weaponColor.Value.z, weaponColor.Value.w };
+				if (ImGui::ColorEdit4("##WeaponCol", col, ImGuiColorEditFlags_NoInputs | ImGuiColorEditFlags_NoLabel))
+					weaponColor = ImColor(col[0], col[1], col[2], col[3]);
+			}
+			
+			CustomToggle("Distance##Info", &bDistanceEnabled);
+			if (bDistanceEnabled)
+			{
+				ImGui::SameLine();
+				float col[4] = { distanceColor.Value.x, distanceColor.Value.y, distanceColor.Value.z, distanceColor.Value.w };
+				if (ImGui::ColorEdit4("##DistCol", col, ImGuiColorEditFlags_NoInputs | ImGuiColorEditFlags_NoLabel))
+					distanceColor = ImColor(col[0], col[1], col[2], col[3]);
+			}
+			
+			CustomToggle("Health Bar (doesnt work)##Info", &bHealthEnabled);
+			
+			ImGui::Spacing();
+			ImGui::Separator();
+			ImGui::Spacing();
+			
+			CustomToggle("Head Dot##Info", &bHeadDotEnabled);
+			if (bHeadDotEnabled)
+			{
+				ColorPickerButton("Dot Color##Info", headDotColor);
+				ImGui::Text("Radius");
+				ImGui::SetNextItemWidth(-1);
+				ImGui::SliderFloat("##DotRad", &headDotRadius, 1.0f, 10.0f, "%.1f");
+			}
+			
+			EndPanel();
+		}
+		ImGui::EndChild();
 	}
 	ImGui::EndChild();
 }
 
-static void RenderObjectsESPContent()
+static void RenderWorldESPContent()
 {
-	float panelWidth = ImGui::GetContentRegionAvail().x * 0.48f;
+	float colWidth = (ImGui::GetContentRegionAvail().x - 24.0f) / 3.0f;
 	
-	ImGui::BeginChild("LootLeft", ImVec2(panelWidth, 0), false);
+	// ========================================================================
+	// Column 1: Loot & Objects
+	// ========================================================================
+	ImGui::BeginChild("WorldCol1", ImVec2(colWidth, 0), false);
 	{
-		BeginPanel("Loot ESP", "Item and container display");
+		BeginPanel("Loot & Objects", nullptr);
 		
-		CustomToggle("Show Loot", &DrawESPLoot::bMasterToggle);
-		CustomToggle("Show Containers", &DrawESPLoot::bContainerToggle);
-		CustomToggle("Show Items", &DrawESPLoot::bItemToggle);
+		CustomToggle("Show Loot (Master)", &DrawESPLoot::bMasterToggle);
+		
+		ImGui::Spacing();
+		
+		CustomToggle("Containers", &DrawESPLoot::bContainerToggle);
+		CustomToggle("Items", &DrawESPLoot::bItemToggle);
 		
 		ImGui::Spacing();
 		ImGui::Separator();
@@ -388,136 +692,144 @@ static void RenderObjectsESPContent()
 		
 		CustomToggle("Show Exfils", &DrawExfils::bMasterToggle);
 		
+		ImGui::Spacing();
+		ImGui::Separator();
+		ImGui::Spacing();
+		
+		ImGui::Text("Colors");
+		ColorPickerButton("Loot##World", ColorPicker::Fuser::m_LootColor);
+		ColorPickerButton("Container##World", ColorPicker::Fuser::m_ContainerColor);
+		ColorPickerButton("Exfil##World", ColorPicker::Fuser::m_ExfilColor);
+		
 		EndPanel();
 	}
 	ImGui::EndChild();
 	
 	ImGui::SameLine();
 	
-	ImGui::BeginChild("LootRight", ImVec2(0, 0), false);
+	// ========================================================================
+	// Column 2: Display Settings (Fuser/Monitor)
+	// ========================================================================
+	ImGui::BeginChild("WorldCol2", ImVec2(colWidth, 0), false);
 	{
-		BeginPanel("World Colors", "Loot and world colors");
+		BeginPanel("Display Settings", nullptr);
 		
-		ColorPickerButton("Loot", ColorPicker::Fuser::m_LootColor);
-		ColorPickerButton("Container", ColorPicker::Fuser::m_ContainerColor);
-		ColorPickerButton("Exfil", ColorPicker::Fuser::m_ExfilColor);
+		CustomToggle("ESP Overlay", &Fuser::bMasterToggle);
+		
+		ImGui::Spacing();
+		ImGui::Separator();
+		ImGui::Spacing();
+		
+		// Monitor selection
+		static bool bMonitorsInit = false;
+		static std::vector<MonitorData> monitorList;
+		auto RefreshMonitors = [&]()
+		{
+			monitorList = MonitorHelper::GetAllMonitors();
+			if (Fuser::m_SelectedMonitor < 0 || Fuser::m_SelectedMonitor >= static_cast<int>(monitorList.size()))
+			{
+				Fuser::m_SelectedMonitor = monitorList.empty() ? -1 : 0;
+			}
+			if (!monitorList.empty() && Fuser::m_SelectedMonitor >= 0 && Fuser::m_SelectedMonitor < static_cast<int>(monitorList.size()))
+			{
+				const auto& m = monitorList[Fuser::m_SelectedMonitor];
+				Fuser::m_ScreenSize.x = static_cast<float>(std::abs(m.rcMonitor.right - m.rcMonitor.left));
+				Fuser::m_ScreenSize.y = static_cast<float>(std::abs(m.rcMonitor.bottom - m.rcMonitor.top));
+			}
+		};
+		if (!bMonitorsInit)
+		{
+			RefreshMonitors();
+			bMonitorsInit = true;
+		}
+		
+		ImGui::Text("Monitor");
+		ImGui::SameLine();
+		if (ImGui::SmallButton("Refresh##Mon"))
+		{
+			RefreshMonitors();
+		}
+		
+		if (!monitorList.empty())
+		{
+			std::string preview = "Select...";
+			if (Fuser::m_SelectedMonitor >= 0 && Fuser::m_SelectedMonitor < static_cast<int>(monitorList.size()))
+			{
+				preview = monitorList[Fuser::m_SelectedMonitor].friendlyName;
+			}
+			ImGui::SetNextItemWidth(-1);
+			if (ImGui::BeginCombo("##Monitor", preview.c_str()))
+			{
+				for (const auto& m : monitorList)
+				{
+					bool isSelected = (Fuser::m_SelectedMonitor == m.index);
+					if (ImGui::Selectable(m.friendlyName.c_str(), isSelected))
+					{
+						Fuser::m_SelectedMonitor = m.index;
+						Fuser::m_ScreenSize.x = static_cast<float>(std::abs(m.rcMonitor.right - m.rcMonitor.left));
+						Fuser::m_ScreenSize.y = static_cast<float>(std::abs(m.rcMonitor.bottom - m.rcMonitor.top));
+						MonitorHelper::MoveWindowToMonitor(MainWindow::g_hWnd, m.index);
+					}
+					if (isSelected) ImGui::SetItemDefaultFocus();
+				}
+				ImGui::EndCombo();
+			}
+		}
+		else
+		{
+			ImGui::TextColored(ImVec4(1.0f, 0.5f, 0.5f, 1.0f), "No displays");
+		}
+		
+		ImGui::Spacing();
+		ImGui::Text("Screen: %.0fx%.0f", Fuser::m_ScreenSize.x, Fuser::m_ScreenSize.y);
+		
+		EndPanel();
+	}
+	ImGui::EndChild();
+	
+	ImGui::SameLine();
+	
+	// ========================================================================
+	// Column 3: Optic ESP & Indicators
+	// ========================================================================
+	ImGui::BeginChild("WorldCol3", ImVec2(0, 0), false);
+	{
+		BeginPanel("Optic ESP", nullptr);
+		
+		CustomToggle("Enable Optic ESP", &DrawESPPlayers::bOpticESP);
+		
+		if (DrawESPPlayers::bOpticESP)
+		{
+			ImGui::Spacing();
+			
+			ImGui::Text("Optic Index");
+			ImGui::SetNextItemWidth(-1);
+			ImGui::InputScalarN("##OpticIdx", ImGuiDataType_U32, &CameraList::m_OpticIndex, 1);
+			
+			static float fNewRadius{ 300.0f };
+			ImGui::Text("Optic Radius");
+			ImGui::SetNextItemWidth(-1);
+			if (ImGui::SliderFloat("##OpticRad", &fNewRadius, 100.0f, 500.0f, "%.0f"))
+			{
+				CameraList::SetOpticRadius(fNewRadius);
+			}
+		}
+		
+		EndPanel();
+		
+		ImGui::Spacing();
+		
+		BeginPanel("Data Tables", nullptr);
+		
+		CustomToggle("Player Table", &PlayerTable::bMasterToggle);
+		CustomToggle("Item Table", &ItemTable::bMasterToggle);
 		
 		EndPanel();
 	}
 	ImGui::EndChild();
 }
 
-static void RenderVisualsTabContent()
-{
-	using namespace MainMenuState;
-	
-	// Sub-tabs matching reference (World, Saved Locations, Rename Object, Misc)
-	if (ImGui::BeginTabBar("VisualsSubTabs"))
-	{
-		if (ImGui::BeginTabItem("World"))
-		{
-			visualsSubTab = 0;
-			ImGui::Spacing();
-			
-			float panelWidth = ImGui::GetContentRegionAvail().x * 0.48f;
-			
-			ImGui::BeginChild("WorldLeft", ImVec2(panelWidth, 0), false);
-			{
-				BeginPanel("Fuser Settings", "3D ESP screen settings");
-				
-				ImGui::Text("Screen Width");
-				CustomSlider("##ScreenW", &Fuser::m_ScreenSize.x, 800.0f, 3840.0f, "%.0f");
-				
-				ImGui::Text("Screen Height");
-				CustomSlider("##ScreenH", &Fuser::m_ScreenSize.y, 600.0f, 2160.0f, "%.0f");
-				
-				EndPanel();
-			}
-			ImGui::EndChild();
-			
-			ImGui::SameLine();
-			
-			ImGui::BeginChild("WorldRight", ImVec2(0, 0), false);
-			{
-				BeginPanel("Optic ESP", "Scope vision settings");
-				
-				CustomToggle("Enable Optic ESP", &DrawESPPlayers::bOpticESP);
-				
-				if (DrawESPPlayers::bOpticESP)
-				{
-					ImGui::Text("Optic Index");
-					ImGui::SetNextItemWidth(100.0f);
-					ImGui::InputScalarN("##OpticIdx", ImGuiDataType_U32, &CameraList::m_OpticIndex, 1);
-					
-					static float fNewRadius{ 300.0f };
-					ImGui::Text("Optic Radius");
-					if (ImGui::SliderFloat("##OpticRad", &fNewRadius, 100.0f, 500.0f, "%.0f"))
-					{
-						CameraList::SetOpticRadius(fNewRadius);
-					}
-				}
-				
-				EndPanel();
-			}
-			ImGui::EndChild();
-			
-			ImGui::EndTabItem();
-		}
-		
-		if (ImGui::BeginTabItem("Saved Locations"))
-		{
-			visualsSubTab = 1;
-			ImGui::TextColored(ImVec4(0.5f, 0.5f, 0.5f, 1.0f), "Saved locations feature coming soon...");
-			ImGui::EndTabItem();
-		}
-		
-		if (ImGui::BeginTabItem("Rename Object"))
-		{
-			visualsSubTab = 2;
-			ImGui::TextColored(ImVec4(0.5f, 0.5f, 0.5f, 1.0f), "Object renaming feature coming soon...");
-			ImGui::EndTabItem();
-		}
-		
-		if (ImGui::BeginTabItem("Misc"))
-		{
-			visualsSubTab = 3;
-			ImGui::Spacing();
-			
-			float panelWidth = ImGui::GetContentRegionAvail().x * 0.48f;
-			
-			ImGui::BeginChild("MiscIndicators", ImVec2(panelWidth, 200), false);
-			{
-				BeginPanel("Indicators", "Visual indicators/alerts");
-				
-				CustomToggle("Player Table", &PlayerTable::bMasterToggle);
-				CustomToggle("Item Table", &ItemTable::bMasterToggle);
-				
-				EndPanel();
-			}
-			ImGui::EndChild();
-			
-			ImGui::SameLine();
-			
-			ImGui::BeginChild("MiscEnhancements", ImVec2(0, 200), false);
-			{
-				BeginPanel("Visual Enhancements", "Game visual changes");
-				
-				// Placeholder for potential future FOV/visual settings
-				ImGui::TextColored(ImVec4(0.5f, 0.5f, 0.5f, 1.0f), "Additional visual enhancements");
-				ImGui::TextColored(ImVec4(0.5f, 0.5f, 0.5f, 1.0f), "will appear here...");
-				
-				EndPanel();
-			}
-			ImGui::EndChild();
-			
-			ImGui::EndTabItem();
-		}
-		
-		ImGui::EndTabBar();
-	}
-}
-
-static void RenderRadarContent()
+static void RenderRadarConfigContent()
 {
 	float panelWidth = ImGui::GetContentRegionAvail().x * 0.48f;
 	
@@ -525,16 +837,20 @@ static void RenderRadarContent()
 	{
 		BeginPanel("Radar Settings", "2D radar minimap");
 		
-		CustomToggle("Enable Radar", &Radar::bMasterToggle);
-		CustomToggle("Local View Ray", &Radar::bLocalViewRay);
-		CustomToggle("Other View Rays", &Radar::bOtherPlayerViewRays);
+		CustomToggle("Enable Radar", &Radar2D::bEnabled);
+		CustomToggle("Show Map Image", &Radar2D::bShowMapImage);
+		CustomToggle("Auto Map Selection", &Radar2D::bAutoMap);
+		CustomToggle("Auto Floor Switch", &Radar2D::bAutoFloorSwitch);
 		
 		ImGui::Spacing();
 		ImGui::Separator();
 		ImGui::Spacing();
 		
-		CustomToggle("Radar Loot", &DrawRadarLoot::bMasterToggle);
-		CustomToggle("Radar Exfils", &DrawRadarExfils::bMasterToggle);
+		ImGui::Text("Display Options");
+		CustomToggle("Show Local Player", &Radar2D::bShowLocalPlayer);
+		CustomToggle("Show Players", &Radar2D::bShowPlayers);
+		CustomToggle("Show Loot", &Radar2D::bShowLoot);
+		CustomToggle("Show Exfils", &Radar2D::bShowExfils);
 		
 		EndPanel();
 	}
@@ -546,26 +862,46 @@ static void RenderRadarContent()
 	{
 		BeginPanel("Radar Visuals", "Display settings");
 		
-		ImGui::Text("Scale");
-		CustomSlider("##Scale", &Radar::fScale, 0.1f, 5.0f, "%.1f");
+		ImGui::Text("Zoom (1=close, 200=far)");
+		ImGui::SetNextItemWidth(180.0f);
+		ImGui::SliderInt("##Zoom", &Radar2D::iZoom, Radar2D::MIN_ZOOM, Radar2D::MAX_ZOOM);
 		
-		ImGui::Text("Local View Ray Length");
-		CustomSlider("##LocalRay", &Radar::fLocalViewRayLength, 10.0f, 500.0f, "%.0f");
+		ImGui::Spacing();
+		ImGui::Separator();
+		ImGui::Spacing();
 		
-		ImGui::Text("Other View Ray Length");
-		CustomSlider("##OtherRay", &Radar::fOtherViewRayLength, 10.0f, 500.0f, "%.0f");
+		ImGui::Text("Icon Sizes");
+		ImGui::Text("Player Icon");
+		CustomSlider("##PlayerIcon", &Radar2D::fPlayerIconSize, 2.0f, 20.0f, "%.1f px");
 		
-		ImGui::Text("Entity Radius");
-		CustomSlider("##EntRadius", &Radar::fEntityRadius, 1.0f, 20.0f, "%.1f");
+		ImGui::Text("Loot Icon");
+		CustomSlider("##LootIcon", &Radar2D::fLootIconSize, 1.0f, 15.0f, "%.1f px");
+		
+		ImGui::Text("Exfil Icon");
+		CustomSlider("##ExfilIcon", &Radar2D::fExfilIconSize, 4.0f, 25.0f, "%.1f px");
+		
+		ImGui::Spacing();
+		ImGui::Separator();
+		ImGui::Spacing();
+		
+		ImGui::Text("Current Floor");
+		ImGui::SetNextItemWidth(100.0f);
+		ImGui::InputInt("##Floor", &Radar2D::iCurrentFloor);
 		
 		EndPanel();
 	}
 	ImGui::EndChild();
 }
 
-static void RenderMiscContent()
+static void RenderRadarViewContent()
 {
-	// FleaBot initialization and thread management (moved from FleaBot::Render)
+	// This renders the full radar map in the content area
+	Radar2D::RenderEmbedded();
+}
+
+static void RenderFleaBotContent()
+{
+	// FleaBot initialization and thread management
 	if (FleaBot::m_PriceList.empty())
 	{
 		FleaBot::LoadPriceList();
@@ -584,24 +920,49 @@ static void RenderMiscContent()
 		FleaBot::pInputThread = std::make_unique<std::thread>(&FleaBot::InputThread);
 	}
 
-	float panelWidth = ImGui::GetContentRegionAvail().x * 0.48f;
+	float colWidth = (ImGui::GetContentRegionAvail().x - 16.0f) / 2.0f;
 	
-	ImGui::BeginChild("MiscLeft", ImVec2(panelWidth, 0), false);
+	// ========================================================================
+	// Left Column: Flea Bot Settings
+	// ========================================================================
+	ImGui::BeginChild("FleaLeft", ImVec2(colWidth, 0), false);
 	{
-		BeginPanel("Flea Bot", "Automatic flea market");
+		BeginPanel("Flea Bot", "Automatic flea market purchasing");
 		
 		CustomToggle("Enable Flea Bot", &FleaBot::bMasterToggle);
 		
 		ImGui::Spacing();
+		ImGui::Separator();
+		ImGui::Spacing();
 		
-		// Basic Flea Bot settings
+		ImGui::Text("Purchase Mode");
 		CustomToggle("Cycle Buy", &FleaBot::bCycleBuy);
+		if (ImGui::IsItemHovered()) ImGui::SetTooltip("Continuously cycle through items");
+		
 		CustomToggle("Limit Buy", &FleaBot::bLimitBuy);
+		if (ImGui::IsItemHovered()) ImGui::SetTooltip("Stop after reaching item count");
 		
 		ImGui::Spacing();
+		ImGui::Separator();
+		ImGui::Spacing();
+		
 		ImGui::Text("Item Count");
-		ImGui::SetNextItemWidth(100.0f);
+		ImGui::SetNextItemWidth(-1);
 		ImGui::InputScalar("##ItemCount", ImGuiDataType_U32, &FleaBot::m_ItemCount);
+		
+		ImGui::Spacing();
+		
+		// Status display
+		ImGui::Separator();
+		ImGui::Spacing();
+		if (FleaBot::bMasterToggle)
+		{
+			ImGui::TextColored(ImVec4(0.3f, 0.9f, 0.3f, 1.0f), "Status: Running");
+		}
+		else
+		{
+			ImGui::TextColored(ImVec4(0.6f, 0.6f, 0.6f, 1.0f), "Status: Stopped");
+		}
 		
 		EndPanel();
 	}
@@ -609,12 +970,89 @@ static void RenderMiscContent()
 	
 	ImGui::SameLine();
 	
-	ImGui::BeginChild("MiscRight", ImVec2(0, 0), false);
+	// ========================================================================
+	// Right Column: Price List Info
+	// ========================================================================
+	ImGui::BeginChild("FleaRight", ImVec2(0, 0), false);
+	{
+		BeginPanel("Price List", "Loaded item prices");
+		
+		ImGui::Text("Items Loaded: %zu", FleaBot::m_PriceList.size());
+		
+		ImGui::Spacing();
+		
+		if (ImGui::Button("Reload Prices", ImVec2(-1, 0)))
+		{
+			FleaBot::m_PriceList.clear();
+			FleaBot::LoadPriceList();
+			FleaBot::ConstructPriceList();
+		}
+		
+		ImGui::Spacing();
+		ImGui::Separator();
+		ImGui::Spacing();
+		
+		// Scrollable price list preview
+		ImGui::Text("Recent Items:");
+		ImGui::BeginChild("PriceListScroll", ImVec2(0, 200), true);
+		{
+			int count = 0;
+			for (const auto& item : FleaBot::m_PriceList)
+			{
+				if (count++ >= 50) break;  // Show first 50 items
+				ImGui::Text("%s", item.first.c_str());
+			}
+			if (FleaBot::m_PriceList.empty())
+			{
+				ImGui::TextColored(ImVec4(0.5f, 0.5f, 0.5f, 1.0f), "No items loaded");
+			}
+		}
+		ImGui::EndChild();
+		
+		EndPanel();
+	}
+	ImGui::EndChild();
+}
+
+static void RenderToolsContent()
+{
+	float colWidth = (ImGui::GetContentRegionAvail().x - 16.0f) / 2.0f;
+	
+	// ========================================================================
+	// Left Column: Data Tables
+	// ========================================================================
+	ImGui::BeginChild("ToolsLeft", ImVec2(colWidth, 0), false);
 	{
 		BeginPanel("Data Tables", "Information displays");
 		
 		CustomToggle("Player Table", &PlayerTable::bMasterToggle);
+		if (ImGui::IsItemHovered()) ImGui::SetTooltip("Show table with player information");
+		
 		CustomToggle("Item Table", &ItemTable::bMasterToggle);
+		if (ImGui::IsItemHovered()) ImGui::SetTooltip("Show table with loot items");
+		
+		EndPanel();
+	}
+	ImGui::EndChild();
+	
+	ImGui::SameLine();
+	
+	// ========================================================================
+	// Right Column: Debug & Future Utilities
+	// ========================================================================
+	ImGui::BeginChild("ToolsRight", ImVec2(0, 0), false);
+	{
+		BeginPanel("Debug", "Development tools");
+		
+		CustomToggle("Log Input State", &MainMenuState::bLogInputState);
+		if (ImGui::IsItemHovered()) ImGui::SetTooltip("Log mouse/keyboard capture state");
+		
+		ImGui::Spacing();
+		ImGui::Separator();
+		ImGui::Spacing();
+		
+		ImGui::TextColored(ImVec4(0.5f, 0.5f, 0.5f, 1.0f), "Additional utilities");
+		ImGui::TextColored(ImVec4(0.5f, 0.5f, 0.5f, 1.0f), "will appear here...");
 		
 		EndPanel();
 	}
@@ -718,25 +1156,17 @@ static void RenderSettingsContent()
 		{
 			ImGui::Spacing();
 			
-			float panelWidth = ImGui::GetContentRegionAvail().x * 0.48f;
+			float colWidth = (ImGui::GetContentRegionAvail().x - 24.0f) / 3.0f;
 			
-			ImGui::BeginChild("ColorsLeft", ImVec2(panelWidth, 0), false);
+			// Column 1: Fuser Player Colors
+			ImGui::BeginChild("ColorsCol1", ImVec2(colWidth, 0), false);
 			{
-				BeginPanel("Fuser Colors", "3D ESP colors");
+				BeginPanel("Fuser Players", nullptr);
 				
-				ImGui::Text("Players");
-				ImGui::Separator();
-				ColorPickerButton("PMC##F", ColorPicker::Fuser::m_PMCColor);
-				ColorPickerButton("Scav##F", ColorPicker::Fuser::m_ScavColor);
-				ColorPickerButton("Boss##F", ColorPicker::Fuser::m_BossColor);
-				ColorPickerButton("Player Scav##F", ColorPicker::Fuser::m_PlayerScavColor);
-				
-				ImGui::Spacing();
-				ImGui::Text("World");
-				ImGui::Separator();
-				ColorPickerButton("Loot##F", ColorPicker::Fuser::m_LootColor);
-				ColorPickerButton("Container##F", ColorPicker::Fuser::m_ContainerColor);
-				ColorPickerButton("Exfil##F", ColorPicker::Fuser::m_ExfilColor);
+				ColorPickerButton("PMC##FP", ColorPicker::Fuser::m_PMCColor);
+				ColorPickerButton("Scav##FP", ColorPicker::Fuser::m_ScavColor);
+				ColorPickerButton("Boss##FP", ColorPicker::Fuser::m_BossColor);
+				ColorPickerButton("Player Scav##FP", ColorPicker::Fuser::m_PlayerScavColor);
 				
 				EndPanel();
 			}
@@ -744,24 +1174,38 @@ static void RenderSettingsContent()
 			
 			ImGui::SameLine();
 			
-			ImGui::BeginChild("ColorsRight", ImVec2(0, 0), false);
+			// Column 2: Fuser World Colors
+			ImGui::BeginChild("ColorsCol2", ImVec2(colWidth, 0), false);
 			{
-				BeginPanel("Radar Colors", "2D radar colors");
+				BeginPanel("Fuser World", nullptr);
+				
+				ColorPickerButton("Loot##FW", ColorPicker::Fuser::m_LootColor);
+				ColorPickerButton("Container##FW", ColorPicker::Fuser::m_ContainerColor);
+				ColorPickerButton("Exfil##FW", ColorPicker::Fuser::m_ExfilColor);
+				
+				EndPanel();
+			}
+			ImGui::EndChild();
+			
+			ImGui::SameLine();
+			
+			// Column 3: Radar Colors
+			ImGui::BeginChild("ColorsCol3", ImVec2(0, 0), false);
+			{
+				BeginPanel("Radar Colors", nullptr);
 				
 				ImGui::Text("Players");
-				ImGui::Separator();
 				ColorPickerButton("PMC##R", ColorPicker::Radar::m_PMCColor);
 				ColorPickerButton("Scav##R", ColorPicker::Radar::m_ScavColor);
 				ColorPickerButton("Boss##R", ColorPicker::Radar::m_BossColor);
 				ColorPickerButton("Player Scav##R", ColorPicker::Radar::m_PlayerScavColor);
-				ColorPickerButton("Local Player##R", ColorPicker::Radar::m_LocalPlayerColor);
+				ColorPickerButton("Local##R", ColorPicker::Radar::m_LocalPlayerColor);
 				
 				ImGui::Spacing();
 				ImGui::Text("World");
-				ImGui::Separator();
-				ColorPickerButton("Loot##R", ColorPicker::Radar::m_LootColor);
-				ColorPickerButton("Container##R", ColorPicker::Radar::m_ContainerColor);
-				ColorPickerButton("Exfil##R", ColorPicker::Radar::m_ExfilColor);
+				ColorPickerButton("Loot##RW", ColorPicker::Radar::m_LootColor);
+				ColorPickerButton("Container##RW", ColorPicker::Radar::m_ContainerColor);
+				ColorPickerButton("Exfil##RW", ColorPicker::Radar::m_ExfilColor);
 				
 				EndPanel();
 			}
@@ -779,12 +1223,13 @@ static void RenderSettingsContent()
 			ImGui::TextColored(ImVec4(0.6f, 0.6f, 0.6f, 1.0f), "Click a key button to rebind. Target = Game PC, Radar = This PC");
 			ImGui::Spacing();
 			
-			if (ImGui::BeginTable("KeybindsTable", 4, ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg))
+			if (ImGui::BeginTable("KeybindsTable", 5, ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg))
 			{
 				ImGui::TableSetupColumn("Action", ImGuiTableColumnFlags_WidthFixed, 120.0f);
 				ImGui::TableSetupColumn("Key", ImGuiTableColumnFlags_WidthFixed, 120.0f);
 				ImGui::TableSetupColumn("Target PC", ImGuiTableColumnFlags_WidthFixed, 70.0f);
 				ImGui::TableSetupColumn("Radar PC", ImGuiTableColumnFlags_WidthFixed, 70.0f);
+				ImGui::TableSetupColumn("Toggle", ImGuiTableColumnFlags_WidthFixed, 60.0f);
 				ImGui::TableHeadersRow();
 				
 				Keybinds::DMARefresh.RenderTableRow();
@@ -820,13 +1265,29 @@ void MainMenu::Render()
 {
 	using namespace MainMenuState;
 	
-	// Main window setup - larger size for unified panel
-	ImGui::SetNextWindowSize(ImVec2(900, 550), ImGuiCond_FirstUseEver);
-	ImGui::SetNextWindowPos(ImVec2(50, 50), ImGuiCond_FirstUseEver);
+	// Get main viewport - we want to fill the entire application window
+	ImGuiViewport* viewport = ImGui::GetMainViewport();
+	
+	// Set window to fill entire viewport
+	ImGui::SetNextWindowPos(viewport->WorkPos);
+	ImGui::SetNextWindowSize(viewport->WorkSize);
+	
+	// Window flags: no title bar, no resize, no move, no collapse, no docking
+	// This makes the ImGui window act as the entire application UI
+	ImGuiWindowFlags windowFlags = 
+		ImGuiWindowFlags_NoTitleBar |
+		ImGuiWindowFlags_NoResize |
+		ImGuiWindowFlags_NoMove |
+		ImGuiWindowFlags_NoCollapse |
+		ImGuiWindowFlags_NoDocking |
+		ImGuiWindowFlags_NoBringToFrontOnFocus |
+		ImGuiWindowFlags_NoNavFocus;
 	
 	ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0, 0));
-	ImGui::Begin("CyNickal Software", nullptr, ImGuiWindowFlags_NoCollapse);
-	ImGui::PopStyleVar();
+	ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 0.0f);
+	ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 0.0f);
+	ImGui::Begin("##MainPanel", nullptr, windowFlags);
+	ImGui::PopStyleVar(3);
 	
 	// ========== SIDEBAR ==========
 	float sidebarWidth = 140.0f;
@@ -852,6 +1313,14 @@ void MainMenu::Render()
 		}
 
 		ImGui::Separator();
+		ImGui::Spacing();
+		
+		// Radar - First item, shows the radar map view
+		if (SidebarCategory("Radar", true, selectedCategory == ECategory::Radar))
+		{
+			selectedCategory = ECategory::Radar;
+		}
+		
 		ImGui::Spacing();
 		
 		// Combat category
@@ -882,20 +1351,15 @@ void MainMenu::Render()
 				selectedCategory = ECategory::Visuals;
 				selectedVisualsItem = 0;
 			}
-			if (SidebarItem("Objects ESP", selectedCategory == ECategory::Visuals && selectedVisualsItem == 1, true))
+			if (SidebarItem("World ESP", selectedCategory == ECategory::Visuals && selectedVisualsItem == 1, true))
 			{
 				selectedCategory = ECategory::Visuals;
 				selectedVisualsItem = 1;
 			}
-			if (SidebarItem("Visuals##VisualsSubItem", selectedCategory == ECategory::Visuals && selectedVisualsItem == 2, true))
+			if (SidebarItem("Radar Config", selectedCategory == ECategory::Visuals && selectedVisualsItem == 2, true))
 			{
 				selectedCategory = ECategory::Visuals;
 				selectedVisualsItem = 2;
-			}
-			if (SidebarItem("Radar", selectedCategory == ECategory::Visuals && selectedVisualsItem == 3, true))
-			{
-				selectedCategory = ECategory::Visuals;
-				selectedVisualsItem = 3;
 			}
 		}
 		
@@ -908,15 +1372,20 @@ void MainMenu::Render()
 		}
 		if (selectedCategory == ECategory::Other || true)
 		{
-			if (SidebarItem("Misc", selectedCategory == ECategory::Other && selectedOtherItem == 0, true))
+			if (SidebarItem("Flea Bot", selectedCategory == ECategory::Other && selectedOtherItem == 0, true))
 			{
 				selectedCategory = ECategory::Other;
 				selectedOtherItem = 0;
 			}
-			if (SidebarItem("Settings", selectedCategory == ECategory::Other && selectedOtherItem == 1, true))
+			if (SidebarItem("Tools", selectedCategory == ECategory::Other && selectedOtherItem == 1, true))
 			{
 				selectedCategory = ECategory::Other;
 				selectedOtherItem = 1;
+			}
+			if (SidebarItem("Settings", selectedCategory == ECategory::Other && selectedOtherItem == 2, true))
+			{
+				selectedCategory = ECategory::Other;
+				selectedOtherItem = 2;
 			}
 		}
 	}
@@ -929,8 +1398,23 @@ void MainMenu::Render()
 	ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(12, 12));
 	ImGui::BeginChild("MainContent", ImVec2(0, 0), false);
 	{
+		if (MainMenuState::bLogInputState)
+		{
+			static auto s_lastLog = std::chrono::steady_clock::now();
+			auto now = std::chrono::steady_clock::now();
+			if (now - s_lastLog > std::chrono::milliseconds(500))
+			{
+				ImGuiIO& io = ImGui::GetIO();
+				LogUi(std::string("IO capture mouse=") + (io.WantCaptureMouse ? "1" : "0") + ", keyboard=" + (io.WantCaptureKeyboard ? "1" : "0"));
+				s_lastLog = now;
+			}
+		}
 		// Render appropriate content based on selection
-		if (selectedCategory == ECategory::Combat)
+		if (selectedCategory == ECategory::Radar)
+		{
+			RenderRadarViewContent();
+		}
+		else if (selectedCategory == ECategory::Combat)
 		{
 			RenderAimbotContent();
 		}
@@ -939,17 +1423,17 @@ void MainMenu::Render()
 			switch (selectedVisualsItem)
 			{
 			case 0: RenderEntityESPContent(); break;
-			case 1: RenderObjectsESPContent(); break;
-			case 2: RenderVisualsTabContent(); break;
-			case 3: RenderRadarContent(); break;
+			case 1: RenderWorldESPContent(); break;
+			case 2: RenderRadarConfigContent(); break;
 			}
 		}
 		else if (selectedCategory == ECategory::Other)
 		{
 			switch (selectedOtherItem)
 			{
-			case 0: RenderMiscContent(); break;
-			case 1: RenderSettingsContent(); break;
+			case 0: RenderFleaBotContent(); break;
+			case 1: RenderToolsContent(); break;
+			case 2: RenderSettingsContent(); break;
 			}
 		}
 	}

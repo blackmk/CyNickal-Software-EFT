@@ -30,6 +30,7 @@ namespace ESPSettings {
         inline bool bDistanceEnabled = true;
         inline ImColor distanceColor = ImColor(0, 200, 255);
         inline bool bHealthEnabled = false;
+        inline ImColor healthColor = ImColor(255, 100, 100);  // Light red for health status
         inline bool bWeaponEnabled = true;
         inline ImColor weaponColor = ImColor(200, 200, 0);
         

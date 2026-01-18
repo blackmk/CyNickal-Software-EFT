@@ -5,18 +5,22 @@
 #include "GUI/Fuser/Fuser.h"
 #include "GUI/Fuser/Overlays/Ammo Count/Ammo Count.h"
 #include "GUI/Color Picker/Color Picker.h"
-#include "GUI/Radar/Radar.h"
-#include "GUI/Radar/Draw/Radar Exfils.h"
-#include "GUI/Radar/Draw/Radar Loot.h"
+#include "GUI/Radar/Radar2D.h"
 #include "GUI/Fuser/Draw/Loot.h"
 #include "GUI/Fuser/Draw/Players.h"
 #include "GUI/Fuser/Draw/Exfils.h"
 #include "GUI/ESP/ESPSettings.h"
 #include "GUI/Keybinds/Keybinds.h"
 #include "GUI/KmboxSettings/KmboxSettings.h"
+#include "GUI/Flea Bot/Flea Bot.h"
+#include "Game/Camera List/Camera List.h"
+#include "GUI/Player Table/Player Table.h"
+#include "GUI/Item Table/Item Table.h"
 
 #include <shlobj.h>
 #include <fstream>
+#include <chrono>
+
 
 std::string Config::getConfigDir() {
 	char path[MAX_PATH];
@@ -137,7 +141,9 @@ static void DeserializeKeybindObj(const json& Table, const std::string& Name, CK
 	if (k.contains("m_Key")) Out.m_Key = k["m_Key"].get<uint32_t>();
 	if (k.contains("m_bTargetPC")) Out.m_bTargetPC = k["m_bTargetPC"].get<bool>();
 	if (k.contains("m_bRadarPC")) Out.m_bRadarPC = k["m_bRadarPC"].get<bool>();
+	if (k.contains("m_bToggle")) Out.m_bToggle = k["m_bToggle"].get<bool>();
 }
+
 
 void Config::DeserializeKeybinds(const json& Table) {
 	if (Table.contains("bSettings")) {
@@ -146,25 +152,33 @@ void Config::DeserializeKeybinds(const json& Table) {
 	DeserializeKeybindObj(Table, "DMARefresh", Keybinds::DMARefresh);
 	DeserializeKeybindObj(Table, "PlayerRefresh", Keybinds::PlayerRefresh);
 	DeserializeKeybindObj(Table, "Aimbot", Keybinds::Aimbot);
+	DeserializeKeybindObj(Table, "FleaBot", Keybinds::FleaBot);
+	DeserializeKeybindObj(Table, "OpticESP", Keybinds::OpticESP);
 }
+
 
 static json SerializeKeybindEntryObj(const CKeybind& kb) {
 	return json{
 		{ "m_Key", kb.m_Key },
 		{ "m_bTargetPC", kb.m_bTargetPC },
-		{ "m_bRadarPC", kb.m_bRadarPC }
+		{ "m_bRadarPC", kb.m_bRadarPC },
+		{ "m_bToggle", kb.m_bToggle }
 	};
 }
+
 
 json Config::SerializeKeybinds(json& j) {
 	j["Keybinds"] = {
 		{ "bSettings", Keybinds::bSettings },
 		{ "DMARefresh", SerializeKeybindEntryObj(Keybinds::DMARefresh) },
 		{ "PlayerRefresh", SerializeKeybindEntryObj(Keybinds::PlayerRefresh) },
-		{ "Aimbot", SerializeKeybindEntryObj(Keybinds::Aimbot) }
+		{ "Aimbot", SerializeKeybindEntryObj(Keybinds::Aimbot) },
+		{ "FleaBot", SerializeKeybindEntryObj(Keybinds::FleaBot) },
+		{ "OpticESP", SerializeKeybindEntryObj(Keybinds::OpticESP) }
 	};
 	return j;
 }
+
 
 json Config::SerializeConfig() {
 	json j;
@@ -176,12 +190,46 @@ json Config::SerializeConfig() {
 		{"fDampen", Aimbot::fDampen},
 		{"fPixelFOV", Aimbot::fPixelFOV},
 		{"fDeadzoneFov", Aimbot::fDeadzoneFov},
+		{"eTargetBone", static_cast<int>(Aimbot::eTargetBone)},
+		{"fRandomHeadChance", Aimbot::fRandomHeadChance},
+		{"fRandomNeckChance", Aimbot::fRandomNeckChance},
+		{"fRandomChestChance", Aimbot::fRandomChestChance},
+		{"fRandomTorsoChance", Aimbot::fRandomTorsoChance},
+		{"fRandomPelvisChance", Aimbot::fRandomPelvisChance},
+		{"bDrawAimline", Aimbot::bDrawAimline},
+		{"fAimlineLength", Aimbot::fAimlineLength},
+		{"fAimlineThickness", Aimbot::fAimlineThickness},
+		{"aimlineColor", static_cast<uint32_t>(Aimbot::aimlineColor)},
+		// Fireport experimental
+		{"bUseFireportAiming", Aimbot::bUseFireportAiming},
+		{"fFireportProjectionDistance", Aimbot::fFireportProjectionDistance},
+		{"bDrawAimPointDot", Aimbot::bDrawAimPointDot},
+		{"fAimPointDotSize", Aimbot::fAimPointDotSize},
+		{"aimPointDotColor", static_cast<uint32_t>(Aimbot::aimPointDotColor)},
+		{"bDrawDebugVisualization", Aimbot::bDrawDebugVisualization},
+		// Target filters
+		{"bTargetPMC", Aimbot::bTargetPMC},
+		{"bTargetPlayerScav", Aimbot::bTargetPlayerScav},
+		{"bTargetAIScav", Aimbot::bTargetAIScav},
+		{"bTargetBoss", Aimbot::bTargetBoss},
+		{"bTargetRaider", Aimbot::bTargetRaider},
+		{"bTargetGuard", Aimbot::bTargetGuard},
+		// Advanced
+		{"fMaxDistance", Aimbot::fMaxDistance},
+		{"bOnlyOnAim", Aimbot::bOnlyOnAim},
+		{"eTargetingMode", static_cast<int>(Aimbot::eTargetingMode)},
+
+		// Prediction
+		{"bEnablePrediction", Aimbot::bEnablePrediction},
+
+		{"bShowTrajectory", Aimbot::bShowTrajectory},
 		// KMbox/Net Device Settings
 		{"bUseKmboxNet", Aimbot::bUseKmboxNet},
 		{"sKmboxNetIp", Aimbot::sKmboxNetIp},
 		{"nKmboxNetPort", Aimbot::nKmboxNetPort},
 		{"sKmboxNetMac", Aimbot::sKmboxNetMac}
 	};
+
 
 	j["ExternalAimDevice"] = {
 		{"bUseKmboxNet", KmboxSettings::bUseKmboxNet},
@@ -194,6 +242,7 @@ json Config::SerializeConfig() {
 	j["Fuser"] = {
 		{"bSettings", Fuser::bSettings},
 		{"bMasterToggle", Fuser::bMasterToggle},
+		{"SelectedMonitor", Fuser::m_SelectedMonitor},
 		{"ScreenSize", {Fuser::m_ScreenSize.x, Fuser::m_ScreenSize.y}},
 
 		{"AmmoCounter", {
@@ -221,30 +270,22 @@ json Config::SerializeConfig() {
 
 	};
 
-	j["Radar"] = {
-
-		{"General", {
-			{"bSettings", Radar::bSettings},
-			{"bMasterToggle", Radar::bMasterToggle},
-			{"bLocalViewRay", Radar::bLocalViewRay},
-			{"bOtherPlayerViewRays", Radar::bOtherPlayerViewRays},
-			{"fScale", Radar::fScale},
-			{"fLocalViewRayLength", Radar::fLocalViewRayLength},
-			{"fOtherViewRayLength", Radar::fOtherViewRayLength},
-			{"fEntityRadius", Radar::fEntityRadius},
-		}},
-		{"Loot", {
-			{"bMasterToggle", DrawRadarLoot::bMasterToggle},
-			{"bLoot", DrawRadarLoot::bLoot},
-			{"bContainers", DrawRadarLoot::bContainers},
-			{"MinLootPrice", DrawRadarLoot::MinLootPrice}
-
-		}},
-		{"Exfils", {
-			{"bMasterToggle", DrawRadarExfils::bMasterToggle}
-		}},
-
+	j["Radar2D"] = {
+		{"bEnabled", Radar2D::bEnabled},
+		{"bShowPlayers", Radar2D::bShowPlayers},
+		{"bShowLoot", Radar2D::bShowLoot},
+		{"bShowExfils", Radar2D::bShowExfils},
+		{"bShowLocalPlayer", Radar2D::bShowLocalPlayer},
+		{"bShowMapImage", Radar2D::bShowMapImage},
+		{"bAutoFloorSwitch", Radar2D::bAutoFloorSwitch},
+		{"bAutoMap", Radar2D::bAutoMap},
+		{"iZoom", Radar2D::iZoom},
+		{"fPlayerIconSize", Radar2D::fPlayerIconSize},
+		{"fLootIconSize", Radar2D::fLootIconSize},
+		{"fExfilIconSize", Radar2D::fExfilIconSize},
+		{"iCurrentFloor", Radar2D::iCurrentFloor}
 	};
+
 
 	j["Colors"] = {
 		{"bMasterToggle", ColorPicker::bMasterToggle},
@@ -270,10 +311,62 @@ json Config::SerializeConfig() {
 		}},
 	};
 
+	j["ESP"] = {
+		{"Enemy", {
+			{"bBoxEnabled", ESPSettings::Enemy::bBoxEnabled},
+			{"boxStyle", ESPSettings::Enemy::boxStyle},
+			{"boxColor", static_cast<uint32_t>(ESPSettings::Enemy::boxColor)},
+			{"boxThickness", ESPSettings::Enemy::boxThickness},
+			{"bBoxFilled", ESPSettings::Enemy::bBoxFilled},
+			{"boxFillColor", static_cast<uint32_t>(ESPSettings::Enemy::boxFillColor)},
+			{"bSkeletonEnabled", ESPSettings::Enemy::bSkeletonEnabled},
+			{"skeletonColor", static_cast<uint32_t>(ESPSettings::Enemy::skeletonColor)},
+			{"skeletonThickness", ESPSettings::Enemy::skeletonThickness},
+			{"bBonesHead", ESPSettings::Enemy::bBonesHead},
+			{"bBonesSpine", ESPSettings::Enemy::bBonesSpine},
+			{"bBonesArmsL", ESPSettings::Enemy::bBonesArmsL},
+			{"bBonesArmsR", ESPSettings::Enemy::bBonesArmsR},
+			{"bBonesLegsL", ESPSettings::Enemy::bBonesLegsL},
+			{"bBonesLegsR", ESPSettings::Enemy::bBonesLegsR},
+			{"bNameEnabled", ESPSettings::Enemy::bNameEnabled},
+			{"nameColor", static_cast<uint32_t>(ESPSettings::Enemy::nameColor)},
+			{"bDistanceEnabled", ESPSettings::Enemy::bDistanceEnabled},
+			{"distanceColor", static_cast<uint32_t>(ESPSettings::Enemy::distanceColor)},
+			{"bHealthEnabled", ESPSettings::Enemy::bHealthEnabled},
+			{"bWeaponEnabled", ESPSettings::Enemy::bWeaponEnabled},
+			{"weaponColor", static_cast<uint32_t>(ESPSettings::Enemy::weaponColor)},
+			{"bHeadDotEnabled", ESPSettings::Enemy::bHeadDotEnabled},
+			{"headDotColor", static_cast<uint32_t>(ESPSettings::Enemy::headDotColor)},
+			{"headDotRadius", ESPSettings::Enemy::headDotRadius}
+		}}
+	};
+
+	j["Optic"] = {
+		{"bOpticESP", DrawESPPlayers::bOpticESP},
+		{"m_OpticIndex", CameraList::m_OpticIndex},
+		{"fOpticRadius", CameraList::GetOpticRadius()}
+	};
+
+	j["Tables"] = {
+		{"PlayerTable", PlayerTable::bMasterToggle},
+		{"ItemTable", ItemTable::bMasterToggle}
+	};
+
+	j["FleaBot"] = {
+		{"bMasterToggle", FleaBot::bMasterToggle},
+		{"bLimitBuy", FleaBot::bLimitBuy},
+		{"bCycleBuy", FleaBot::bCycleBuy},
+		{"m_ItemCount", FleaBot::m_ItemCount},
+		{"TimeoutMs", FleaBot::TimeoutDuration.count()},
+		{"CycleDelayMs", FleaBot::CycleDelay.count()},
+		{"SuperCycleDelayMs", FleaBot::SuperCycleDelay.count()}
+	};
+
 	SerializeKeybinds(j);
 
 	return j;
 }
+
 
 void Config::DeserializeConfig(const json& j) {
 
@@ -298,6 +391,97 @@ void Config::DeserializeConfig(const json& j) {
 		if (aimbotTable.contains("fDeadzoneFov")) {
 			Aimbot::fDeadzoneFov = aimbotTable["fDeadzoneFov"].get<float>();
 		}
+		if (aimbotTable.contains("eTargetBone")) {
+			Aimbot::eTargetBone = static_cast<ETargetBone>(aimbotTable["eTargetBone"].get<int>());
+		}
+		if (aimbotTable.contains("fRandomHeadChance")) {
+			Aimbot::fRandomHeadChance = aimbotTable["fRandomHeadChance"].get<float>();
+		}
+		if (aimbotTable.contains("fRandomNeckChance")) {
+			Aimbot::fRandomNeckChance = aimbotTable["fRandomNeckChance"].get<float>();
+		}
+		if (aimbotTable.contains("fRandomChestChance")) {
+			Aimbot::fRandomChestChance = aimbotTable["fRandomChestChance"].get<float>();
+		}
+		if (aimbotTable.contains("fRandomTorsoChance")) {
+			Aimbot::fRandomTorsoChance = aimbotTable["fRandomTorsoChance"].get<float>();
+		}
+		if (aimbotTable.contains("fRandomPelvisChance")) {
+			Aimbot::fRandomPelvisChance = aimbotTable["fRandomPelvisChance"].get<float>();
+		}
+		Aimbot::NormalizeRandomWeights();
+		if (aimbotTable.contains("bDrawAimline")) {
+			Aimbot::bDrawAimline = aimbotTable["bDrawAimline"].get<bool>();
+		}
+		if (aimbotTable.contains("fAimlineLength")) {
+			Aimbot::fAimlineLength = aimbotTable["fAimlineLength"].get<float>();
+		}
+		if (aimbotTable.contains("fAimlineThickness")) {
+			Aimbot::fAimlineThickness = aimbotTable["fAimlineThickness"].get<float>();
+		}
+		if (aimbotTable.contains("aimlineColor")) {
+			Aimbot::aimlineColor = ImColor(aimbotTable["aimlineColor"].get<uint32_t>());
+		}
+		// Fireport experimental
+		if (aimbotTable.contains("bUseFireportAiming")) {
+			Aimbot::bUseFireportAiming = aimbotTable["bUseFireportAiming"].get<bool>();
+		}
+		if (aimbotTable.contains("fFireportProjectionDistance")) {
+			Aimbot::fFireportProjectionDistance = aimbotTable["fFireportProjectionDistance"].get<float>();
+		}
+		if (aimbotTable.contains("bDrawAimPointDot")) {
+			Aimbot::bDrawAimPointDot = aimbotTable["bDrawAimPointDot"].get<bool>();
+		}
+		if (aimbotTable.contains("fAimPointDotSize")) {
+			Aimbot::fAimPointDotSize = aimbotTable["fAimPointDotSize"].get<float>();
+		}
+		if (aimbotTable.contains("aimPointDotColor")) {
+			Aimbot::aimPointDotColor = ImColor(aimbotTable["aimPointDotColor"].get<uint32_t>());
+		}
+		if (aimbotTable.contains("bDrawDebugVisualization")) {
+			Aimbot::bDrawDebugVisualization = aimbotTable["bDrawDebugVisualization"].get<bool>();
+		}
+		// Target filters
+		if (aimbotTable.contains("bTargetPMC")) {
+			Aimbot::bTargetPMC = aimbotTable["bTargetPMC"].get<bool>();
+		}
+		if (aimbotTable.contains("bTargetPlayerScav")) {
+			Aimbot::bTargetPlayerScav = aimbotTable["bTargetPlayerScav"].get<bool>();
+		}
+		if (aimbotTable.contains("bTargetAIScav")) {
+			Aimbot::bTargetAIScav = aimbotTable["bTargetAIScav"].get<bool>();
+		}
+		if (aimbotTable.contains("bTargetBoss")) {
+			Aimbot::bTargetBoss = aimbotTable["bTargetBoss"].get<bool>();
+		}
+		if (aimbotTable.contains("bTargetRaider")) {
+			Aimbot::bTargetRaider = aimbotTable["bTargetRaider"].get<bool>();
+		}
+		if (aimbotTable.contains("bTargetGuard")) {
+			Aimbot::bTargetGuard = aimbotTable["bTargetGuard"].get<bool>();
+		}
+		// Advanced
+		if (aimbotTable.contains("fMaxDistance")) {
+			Aimbot::fMaxDistance = aimbotTable["fMaxDistance"].get<float>();
+		}
+		if (aimbotTable.contains("bOnlyOnAim")) {
+			Aimbot::bOnlyOnAim = aimbotTable["bOnlyOnAim"].get<bool>();
+		}
+		if (aimbotTable.contains("eTargetingMode")) {
+			Aimbot::eTargetingMode = static_cast<ETargetingMode>(aimbotTable["eTargetingMode"].get<int>());
+		}
+
+
+		if (aimbotTable.contains("eTargetingMode")) {
+			Aimbot::eTargetingMode = static_cast<ETargetingMode>(aimbotTable["eTargetingMode"].get<int>());
+		}
+		// Prediction
+		if (aimbotTable.contains("bEnablePrediction")) {
+			Aimbot::bEnablePrediction = aimbotTable["bEnablePrediction"].get<bool>();
+		}
+		if (aimbotTable.contains("bShowTrajectory")) {
+			Aimbot::bShowTrajectory = aimbotTable["bShowTrajectory"].get<bool>();
+		}
 		// KMbox/Net Device Settings
 		if (aimbotTable.contains("bUseKmboxNet")) {
 			Aimbot::bUseKmboxNet = aimbotTable["bUseKmboxNet"].get<bool>();
@@ -312,6 +496,7 @@ void Config::DeserializeConfig(const json& j) {
 			Aimbot::sKmboxNetMac = aimbotTable["sKmboxNetMac"].get<std::string>();
 		}
 	}
+
 
 	if (j.contains("ExternalAimDevice")) {
 		const auto& kmboxTable = j["ExternalAimDevice"];
@@ -336,6 +521,9 @@ void Config::DeserializeConfig(const json& j) {
 		}
 		if (fuserTable.contains("bMasterToggle")) {
 			Fuser::bMasterToggle = fuserTable["bMasterToggle"].get<bool>();
+		}
+		if (fuserTable.contains("SelectedMonitor")) {
+			Fuser::m_SelectedMonitor = fuserTable["SelectedMonitor"].get<int>();
 		}
 		if (fuserTable.contains("ScreenSize")) {
 			const auto& screenSizeJson = fuserTable["ScreenSize"];
@@ -398,62 +586,21 @@ void Config::DeserializeConfig(const json& j) {
 		}
 	}
 
-	if (j.contains("Radar")) {
-		const auto& radarTable = j["Radar"];
-
-		if (radarTable.contains("General"))
-		{
-			const auto& GeneralTable = radarTable["General"];
-
-			if (GeneralTable.contains("bSettings")) {
-				Radar::bSettings = GeneralTable["bSettings"].get<bool>();
-			}
-			if (GeneralTable.contains("bMasterToggle")) {
-				Radar::bMasterToggle = GeneralTable["bMasterToggle"].get<bool>();
-			}
-			if (GeneralTable.contains("bLocalViewRay")) {
-				Radar::bLocalViewRay = GeneralTable["bLocalViewRay"].get<bool>();
-			}
-			if (GeneralTable.contains("bOtherPlayerViewRays")) {
-				Radar::bOtherPlayerViewRays = GeneralTable["bOtherPlayerViewRays"].get<bool>();
-			}
-			if (GeneralTable.contains("fScale")) {
-				Radar::fScale = GeneralTable["fScale"].get<float>();
-			}
-			if (GeneralTable.contains("fLocalViewRayLength")) {
-				Radar::fLocalViewRayLength = GeneralTable["fLocalViewRayLength"].get<float>();
-			}
-			if (GeneralTable.contains("fOtherViewRayLength")) {
-				Radar::fOtherViewRayLength = GeneralTable["fOtherViewRayLength"].get<float>();
-			}
-			if (GeneralTable.contains("fEntityRadius")) {
-				Radar::fEntityRadius = GeneralTable["fEntityRadius"].get<float>();
-			}
-		}
-
-		if (radarTable.contains("Loot")) {
-			const auto& LootTable = radarTable["Loot"];
-			if (LootTable.contains("bMasterToggle")) {
-				DrawRadarLoot::bMasterToggle = LootTable["bMasterToggle"].get<bool>();
-			}
-			if (LootTable.contains("bLoot")) {
-				DrawRadarLoot::bLoot = LootTable["bLoot"].get<bool>();
-			}
-			if (LootTable.contains("bContainers")) {
-				DrawRadarLoot::bContainers = LootTable["bContainers"].get<bool>();
-			}
-			if (LootTable.contains("MinLootPrice")) {
-				DrawRadarLoot::MinLootPrice = LootTable["MinLootPrice"].get<int32_t>();
-			}
-		}
-
-		if (radarTable.contains("Exfils")) {
-			const auto& ExfilsTable = radarTable["Exfils"];
-
-			if (ExfilsTable.contains("bMasterToggle")) {
-				DrawRadarExfils::bMasterToggle = ExfilsTable["bMasterToggle"].get<bool>();
-			}
-		}
+	if (j.contains("Radar2D")) {
+		const auto& r2d = j["Radar2D"];
+		if (r2d.contains("bEnabled")) Radar2D::bEnabled = r2d["bEnabled"].get<bool>();
+		if (r2d.contains("bShowPlayers")) Radar2D::bShowPlayers = r2d["bShowPlayers"].get<bool>();
+		if (r2d.contains("bShowLoot")) Radar2D::bShowLoot = r2d["bShowLoot"].get<bool>();
+		if (r2d.contains("bShowExfils")) Radar2D::bShowExfils = r2d["bShowExfils"].get<bool>();
+		if (r2d.contains("bShowLocalPlayer")) Radar2D::bShowLocalPlayer = r2d["bShowLocalPlayer"].get<bool>();
+		if (r2d.contains("bShowMapImage")) Radar2D::bShowMapImage = r2d["bShowMapImage"].get<bool>();
+		if (r2d.contains("bAutoFloorSwitch")) Radar2D::bAutoFloorSwitch = r2d["bAutoFloorSwitch"].get<bool>();
+		if (r2d.contains("bAutoMap")) Radar2D::bAutoMap = r2d["bAutoMap"].get<bool>();
+		if (r2d.contains("iZoom")) Radar2D::iZoom = r2d["iZoom"].get<int>();
+		if (r2d.contains("fPlayerIconSize")) Radar2D::fPlayerIconSize = r2d["fPlayerIconSize"].get<float>();
+		if (r2d.contains("fLootIconSize")) Radar2D::fLootIconSize = r2d["fLootIconSize"].get<float>();
+		if (r2d.contains("fExfilIconSize")) Radar2D::fExfilIconSize = r2d["fExfilIconSize"].get<float>();
+		if (r2d.contains("iCurrentFloor")) Radar2D::iCurrentFloor = r2d["iCurrentFloor"].get<int>();
 	}
 
 	if (j.contains("Colors")) {
@@ -524,10 +671,68 @@ void Config::DeserializeConfig(const json& j) {
 		}
 	}
 
+	if (j.contains("ESP")) {
+		const auto& espTable = j["ESP"];
+		if (espTable.contains("Enemy")) {
+			const auto& enemy = espTable["Enemy"];
+			if (enemy.contains("bBoxEnabled")) ESPSettings::Enemy::bBoxEnabled = enemy["bBoxEnabled"].get<bool>();
+			if (enemy.contains("boxStyle")) ESPSettings::Enemy::boxStyle = enemy["boxStyle"].get<int>();
+			if (enemy.contains("boxColor")) ESPSettings::Enemy::boxColor = ImColor(enemy["boxColor"].get<uint32_t>());
+			if (enemy.contains("boxThickness")) ESPSettings::Enemy::boxThickness = enemy["boxThickness"].get<float>();
+			if (enemy.contains("bBoxFilled")) ESPSettings::Enemy::bBoxFilled = enemy["bBoxFilled"].get<bool>();
+			if (enemy.contains("boxFillColor")) ESPSettings::Enemy::boxFillColor = ImColor(enemy["boxFillColor"].get<uint32_t>());
+			if (enemy.contains("bSkeletonEnabled")) ESPSettings::Enemy::bSkeletonEnabled = enemy["bSkeletonEnabled"].get<bool>();
+			if (enemy.contains("skeletonColor")) ESPSettings::Enemy::skeletonColor = ImColor(enemy["skeletonColor"].get<uint32_t>());
+			if (enemy.contains("skeletonThickness")) ESPSettings::Enemy::skeletonThickness = enemy["skeletonThickness"].get<float>();
+			if (enemy.contains("bBonesHead")) ESPSettings::Enemy::bBonesHead = enemy["bBonesHead"].get<bool>();
+			if (enemy.contains("bBonesSpine")) ESPSettings::Enemy::bBonesSpine = enemy["bBonesSpine"].get<bool>();
+			if (enemy.contains("bBonesArmsL")) ESPSettings::Enemy::bBonesArmsL = enemy["bBonesArmsL"].get<bool>();
+			if (enemy.contains("bBonesArmsR")) ESPSettings::Enemy::bBonesArmsR = enemy["bBonesArmsR"].get<bool>();
+			if (enemy.contains("bBonesLegsL")) ESPSettings::Enemy::bBonesLegsL = enemy["bBonesLegsL"].get<bool>();
+			if (enemy.contains("bBonesLegsR")) ESPSettings::Enemy::bBonesLegsR = enemy["bBonesLegsR"].get<bool>();
+			if (enemy.contains("bNameEnabled")) ESPSettings::Enemy::bNameEnabled = enemy["bNameEnabled"].get<bool>();
+			if (enemy.contains("nameColor")) ESPSettings::Enemy::nameColor = ImColor(enemy["nameColor"].get<uint32_t>());
+			if (enemy.contains("bDistanceEnabled")) ESPSettings::Enemy::bDistanceEnabled = enemy["bDistanceEnabled"].get<bool>();
+			if (enemy.contains("distanceColor")) ESPSettings::Enemy::distanceColor = ImColor(enemy["distanceColor"].get<uint32_t>());
+			if (enemy.contains("bHealthEnabled")) ESPSettings::Enemy::bHealthEnabled = enemy["bHealthEnabled"].get<bool>();
+			if (enemy.contains("bWeaponEnabled")) ESPSettings::Enemy::bWeaponEnabled = enemy["bWeaponEnabled"].get<bool>();
+			if (enemy.contains("weaponColor")) ESPSettings::Enemy::weaponColor = ImColor(enemy["weaponColor"].get<uint32_t>());
+			if (enemy.contains("bHeadDotEnabled")) ESPSettings::Enemy::bHeadDotEnabled = enemy["bHeadDotEnabled"].get<bool>();
+			if (enemy.contains("headDotColor")) ESPSettings::Enemy::headDotColor = ImColor(enemy["headDotColor"].get<uint32_t>());
+			if (enemy.contains("headDotRadius")) ESPSettings::Enemy::headDotRadius = enemy["headDotRadius"].get<float>();
+		}
+	}
+
+	if (j.contains("Optic")) {
+		const auto& optic = j["Optic"];
+		if (optic.contains("bOpticESP")) DrawESPPlayers::bOpticESP = optic["bOpticESP"].get<bool>();
+		if (optic.contains("m_OpticIndex")) CameraList::m_OpticIndex = optic["m_OpticIndex"].get<uint32_t>();
+		if (optic.contains("fOpticRadius")) CameraList::SetOpticRadius(optic["fOpticRadius"].get<float>());
+	}
+
+	if (j.contains("Tables")) {
+		const auto& tables = j["Tables"];
+		if (tables.contains("PlayerTable")) PlayerTable::bMasterToggle = tables["PlayerTable"].get<bool>();
+		if (tables.contains("ItemTable")) ItemTable::bMasterToggle = tables["ItemTable"].get<bool>();
+	}
+
+	if (j.contains("FleaBot")) {
+		const auto& fb = j["FleaBot"];
+		if (fb.contains("bMasterToggle")) FleaBot::bMasterToggle = fb["bMasterToggle"].get<bool>();
+		if (fb.contains("bLimitBuy")) FleaBot::bLimitBuy = fb["bLimitBuy"].get<bool>();
+		if (fb.contains("bCycleBuy")) FleaBot::bCycleBuy = fb["bCycleBuy"].get<bool>();
+		if (fb.contains("m_ItemCount")) FleaBot::m_ItemCount = fb["m_ItemCount"].get<uint32_t>();
+		if (fb.contains("TimeoutMs")) FleaBot::TimeoutDuration = std::chrono::milliseconds(fb["TimeoutMs"].get<int64_t>());
+		if (fb.contains("CycleDelayMs")) FleaBot::CycleDelay = std::chrono::milliseconds(fb["CycleDelayMs"].get<int64_t>());
+		if (fb.contains("SuperCycleDelayMs")) FleaBot::SuperCycleDelay = std::chrono::milliseconds(fb["SuperCycleDelayMs"].get<int64_t>());
+	}
+
 	if (j.contains("Keybinds")) {
 		DeserializeKeybinds(j["Keybinds"]);
 	}
 }
+
+
 
 void Config::SaveConfig(const std::string& configName) {
 	std::println("[Config] Saving config: {}", configName);

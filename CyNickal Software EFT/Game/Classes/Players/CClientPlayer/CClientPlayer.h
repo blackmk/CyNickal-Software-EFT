@@ -1,5 +1,6 @@
 #pragma once
 #include "Game/Classes/Players/CBaseEFTPlayer/CBaseEFTPlayer.h"
+#include "Game/Classes/CFirearmManager/CFirearmManager.h"
 
 class CClientPlayer : public CBaseEFTPlayer
 {
@@ -11,7 +12,15 @@ private:
 	uintptr_t m_PreviousHandsControllerAddress{ 0 };
 	uintptr_t m_ProceduralWeaponAnimationAddress{ 0 };
 	uintptr_t m_OpticsAddress{ 0 };
+	uintptr_t m_OpticItemsArray{ 0 };
+	uintptr_t m_FirstSightNBone{ 0 };
+	uintptr_t m_FirstSightComponent{ 0 };
+	int32_t m_OpticCount{ 0 };
+	float m_ScopeZoomValue{ 1.0f };
+	bool m_bScoped{ false };
 	std::byte m_AimingByte{ 0 };
+	std::unique_ptr<CFirearmManager> m_pFirearmManager{ nullptr };
+
 
 public:
 	CClientPlayer(uintptr_t EntityAddress) : CBaseEFTPlayer(EntityAddress) {}
@@ -33,4 +42,7 @@ public:
 	void Finalize();
 	void QuickFinalize();
 	bool IsAiming() const { return m_AimingByte != std::byte{ 0 }; }
+	bool IsScoped() const { return m_bScoped; }
+	float GetScopeZoom() const { return m_ScopeZoomValue; }
+	CFirearmManager* GetFirearmManager() const { return m_pFirearmManager.get(); }
 };

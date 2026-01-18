@@ -4,30 +4,33 @@
 
 namespace ESPPreview {
     // Relative positions for a standing mannequin (0.0 to 1.0)
-    // Centered horizontally (0.5)
+    // X: 0.0 = left, 1.0 = right (centered at 0.5)
+    // Y: 0.0 = top (head), 1.0 = bottom (feet)
     static const ImVec2 staticBones[] = {
-        {0.50f, 0.05f}, // Head (0)
-        {0.50f, 0.12f}, // Neck (1)
-        {0.50f, 0.30f}, // Spine3 (2)
-        {0.50f, 0.50f}, // Pelvis (3)
-        // Arms
-        {0.45f, 0.15f}, // LUpperArm (4)
-        {0.35f, 0.25f}, // LForeArm1 (5)
-        {0.30f, 0.35f}, // LForeArm2 (6)
-        {0.25f, 0.40f}, // LPalm (7)
-        {0.55f, 0.15f}, // RUpperArm (8)
-        {0.65f, 0.25f}, // RForeArm1 (9)
-        {0.70f, 0.35f}, // RForeArm2 (10)
-        {0.75f, 0.40f}, // RPalm (11)
-        // Legs
-        {0.45f, 0.55f}, // LThigh1 (12)
-        {0.43f, 0.70f}, // LThigh2 (13)
-        {0.41f, 0.85f}, // LCalf (14)
-        {0.40f, 0.95f}, // LFoot (15)
-        {0.55f, 0.55f}, // RThigh1 (16)
-        {0.57f, 0.70f}, // RThigh2 (17)
-        {0.59f, 0.85f}, // RCalf (18)
-        {0.60f, 0.95f}  // RFoot (19)
+        {0.50f, 0.03f},  // 0: Head (top)
+        {0.50f, 0.10f},  // 1: Neck
+        {0.50f, 0.28f},  // 2: Spine3 (chest)
+        {0.50f, 0.45f},  // 3: Pelvis
+        // Left Arm
+        {0.42f, 0.12f},  // 4: LUpperArm (shoulder)
+        {0.32f, 0.22f},  // 5: LForeArm1 (elbow area)
+        {0.26f, 0.32f},  // 6: LForeArm2 (forearm)
+        {0.22f, 0.40f},  // 7: LPalm (hand)
+        // Right Arm
+        {0.58f, 0.12f},  // 8: RUpperArm (shoulder)
+        {0.68f, 0.22f},  // 9: RForeArm1 (elbow area)
+        {0.74f, 0.32f},  // 10: RForeArm2 (forearm)
+        {0.78f, 0.40f},  // 11: RPalm (hand)
+        // Left Leg
+        {0.44f, 0.48f},  // 12: LThigh1 (hip)
+        {0.42f, 0.62f},  // 13: LThigh2 (thigh)
+        {0.40f, 0.78f},  // 14: LCalf (knee/calf)
+        {0.38f, 0.95f},  // 15: LFoot
+        // Right Leg
+        {0.56f, 0.48f},  // 16: RThigh1 (hip)
+        {0.58f, 0.62f},  // 17: RThigh2 (thigh)
+        {0.60f, 0.78f},  // 18: RCalf (knee/calf)
+        {0.62f, 0.95f}   // 19: RFoot
     };
 
     static void ConnectBones(ImDrawList* drawList, ImVec2 posA, ImVec2 posB, ImColor color, float thickness) {
@@ -43,7 +46,7 @@ namespace ESPPreview {
             drawList->AddRect(min, max, color, 0.0f, 0, thickness);
         } else { // Corners
             float sizeX = (max.x - min.x) / 4.0f;
-            float sizeY = (max.y - min.y) / 7.0f; // Taller corners for vertical box
+            float sizeY = (max.y - min.y) / 6.0f;
 
             // Top Left
             drawList->AddLine(min, ImVec2(min.x + sizeX, min.y), color, thickness);
@@ -60,48 +63,73 @@ namespace ESPPreview {
         }
     }
 
-    void Render(ImVec2 previewSize) {
+    void Render(ImVec2 availableSize) {
         ImVec2 canvasPos = ImGui::GetCursorScreenPos();
         ImDrawList* drawList = ImGui::GetWindowDrawList();
 
-        // Draw preview background
-        drawList->AddRectFilled(canvasPos, ImVec2(canvasPos.x + previewSize.x, canvasPos.y + previewSize.y), ImColor(25, 25, 35, 255), 5.0f);
-        drawList->AddRect(canvasPos, ImVec2(canvasPos.x + previewSize.x, canvasPos.y + previewSize.y), ImColor(50, 50, 60, 255), 5.0f);
+        // Use full available size with small margin
+        float margin = 10.0f;
+        float previewWidth = availableSize.x - margin * 2.0f;
+        float previewHeight = availableSize.y - margin * 2.0f;
+        
+        // Ensure minimum size
+        if (previewWidth < 100.0f) previewWidth = 100.0f;
+        if (previewHeight < 150.0f) previewHeight = 150.0f;
 
-        // Define a "padding" for the mannequin within the preview box
-        float padding = 40.0f;
-        ImVec2 drawAreaMin = {canvasPos.x + padding, canvasPos.y + padding + 20.0f};
-        ImVec2 drawAreaMax = {canvasPos.x + previewSize.x - padding, canvasPos.y + previewSize.y - padding - 20.0f};
+        // Draw preview background
+        ImVec2 bgMin = canvasPos;
+        ImVec2 bgMax = ImVec2(canvasPos.x + previewWidth, canvasPos.y + previewHeight);
+        drawList->AddRectFilled(bgMin, bgMax, ImColor(20, 20, 30, 255), 4.0f);
+        drawList->AddRect(bgMin, bgMax, ImColor(60, 60, 70, 255), 4.0f);
+
+        // Define draw area with padding inside the preview box
+        float padding = 25.0f;
+        ImVec2 drawAreaMin = {canvasPos.x + padding, canvasPos.y + padding + 25.0f};  // Extra top for text
+        ImVec2 drawAreaMax = {canvasPos.x + previewWidth - padding, canvasPos.y + previewHeight - padding - 20.0f};  // Extra bottom for distance text
         float drawWidth = drawAreaMax.x - drawAreaMin.x;
         float drawHeight = drawAreaMax.y - drawAreaMin.y;
 
+        // Ensure valid draw area
+        if (drawWidth < 50.0f || drawHeight < 80.0f) {
+            ImGui::Dummy(availableSize);
+            return;
+        }
+
         // Map relative bone positions to preview area
+        // The mannequin is designed to fit in the center with proper proportions
         ImVec2 bones[20];
         for (int i = 0; i < 20; i++) {
-            bones[i].x = drawAreaMin.x + (staticBones[i].x - 0.25f) * (drawWidth / 0.5f); // Centering and scaling
+            bones[i].x = drawAreaMin.x + staticBones[i].x * drawWidth;
             bones[i].y = drawAreaMin.y + staticBones[i].y * drawHeight;
         }
+
+        // Calculate scale factor for thickness/radius based on preview size
+        float scaleFactor = (drawHeight / 400.0f);  // Base scale on height
+        if (scaleFactor < 0.5f) scaleFactor = 0.5f;
+        if (scaleFactor > 2.0f) scaleFactor = 2.0f;
 
         using namespace ESPSettings::Enemy;
 
         // Draw Skeleton
         if (bSkeletonEnabled) {
-            float thick = skeletonThickness;
+            float thick = skeletonThickness * scaleFactor;
             ImColor col = skeletonColor;
 
-            if (bBonesHead) ConnectBones(drawList, bones[0], bones[1], col, thick); // Head to Neck
+            if (bBonesHead) {
+                ConnectBones(drawList, bones[0], bones[1], col, thick); // Head to Neck
+            }
             if (bBonesSpine) {
                 ConnectBones(drawList, bones[1], bones[2], col, thick); // Neck to Spine
                 ConnectBones(drawList, bones[2], bones[3], col, thick); // Spine to Pelvis
             }
             if (bBonesArmsL) {
-                ConnectBones(drawList, bones[2], bones[4], col, thick); // Spine to LUpperArm
+                ConnectBones(drawList, bones[1], bones[4], col, thick); // Neck to LUpperArm
                 ConnectBones(drawList, bones[4], bones[5], col, thick);
                 ConnectBones(drawList, bones[5], bones[6], col, thick);
                 ConnectBones(drawList, bones[6], bones[7], col, thick);
             }
             if (bBonesArmsR) {
-                ConnectBones(drawList, bones[2], bones[8], col, thick); // Spine to RUpperArm
+                ConnectBones(drawList, bones[1], bones[8], col, thick); // Neck to RUpperArm
                 ConnectBones(drawList, bones[8], bones[9], col, thick);
                 ConnectBones(drawList, bones[9], bones[10], col, thick);
                 ConnectBones(drawList, bones[10], bones[11], col, thick);
@@ -122,53 +150,78 @@ namespace ESPPreview {
 
         // Draw Head Dot
         if (bHeadDotEnabled) {
-            drawList->AddCircleFilled(bones[0], headDotRadius, headDotColor);
+            float radius = headDotRadius * scaleFactor;
+            if (radius < 2.0f) radius = 2.0f;
+            drawList->AddCircleFilled(bones[0], radius, headDotColor);
         }
 
-        // Calculate bounding box for the mannequin
-        ImVec2 bMin = bones[0];
-        ImVec2 bMax = bones[0];
-        for (int i = 0; i < 20; i++) {
-            bMin.x = ImMin(bMin.x, bones[i].x);
-            bMin.y = ImMin(bMin.y, bones[i].y);
-            bMax.x = ImMax(bMax.x, bones[i].x);
-            bMax.y = ImMax(bMax.y, bones[i].y);
-        }
-        // Add slight padding to the box
-        bMin.x -= 5.0f; bMin.y -= 5.0f;
-        bMax.x += 5.0f; bMax.y += 5.0f;
+        // Calculate bounding box for the mannequin body (not hands/feet extremes)
+        // Use a tighter box around the main body
+        float bodyLeft = bones[7].x;   // Left hand
+        float bodyRight = bones[11].x; // Right hand
+        float bodyTop = bones[0].y - 8.0f * scaleFactor;    // Above head
+        float bodyBottom = bones[15].y; // Feet
+        
+        // Expand box slightly for padding
+        float boxPadding = 8.0f * scaleFactor;
+        ImVec2 bMin = ImVec2(bodyLeft - boxPadding, bodyTop);
+        ImVec2 bMax = ImVec2(bodyRight + boxPadding, bodyBottom + boxPadding * 0.5f);
 
         // Draw Box
         if (bBoxEnabled) {
-            DrawBox(drawList, bMin, bMax, boxColor, boxThickness, boxStyle, bBoxFilled, boxFillColor);
+            float thick = boxThickness * scaleFactor;
+            DrawBox(drawList, bMin, bMax, boxColor, thick, boxStyle, bBoxFilled, boxFillColor);
         }
 
-        // Draw Info Text
-        float textYOffset = 0.0f;
+        // Draw Info Text (scaled font would be ideal, but we'll use positioning)
+        float textCenterX = (bMin.x + bMax.x) * 0.5f;
+        
+        // Name above box
         if (bNameEnabled) {
-            const char* name = "Name";
+            const char* name = "PlayerName";
             ImVec2 tSize = ImGui::CalcTextSize(name);
-            drawList->AddText(ImVec2(bMin.x + (bMax.x - bMin.x) / 2.0f - tSize.x / 2.0f, bMin.y - 15.0f - textYOffset), nameColor, name);
-            textYOffset += 15.0f;
-        }
-        if (bWeaponEnabled) {
-            const char* weapon = "FN SCAR-L";
-            ImVec2 tSize = ImGui::CalcTextSize(weapon);
-            drawList->AddText(ImVec2(bMin.x + (bMax.x - bMin.x) / 2.0f - tSize.x / 2.0f, bMin.y - 15.0f - textYOffset), weaponColor, weapon);
-        }
-
-        if (bDistanceEnabled) {
-            const char* dist = "500M";
-            ImVec2 tSize = ImGui::CalcTextSize(dist);
-            drawList->AddText(ImVec2(bMin.x + (bMax.x - bMin.x) / 2.0f - tSize.x / 2.0f, bMax.y + 5.0f), distanceColor, dist);
+            float textY = bMin.y - tSize.y - 2.0f;
+            if (bWeaponEnabled) textY -= tSize.y + 2.0f;  // Make room for weapon
+            drawList->AddText(ImVec2(textCenterX - tSize.x * 0.5f, textY), nameColor, name);
         }
         
-        // Example health bar if needed (not in current plan but good for reference)
-        if (bHealthEnabled) {
-            drawList->AddRectFilled(ImVec2(bMax.x + 5.0f, bMin.y), ImVec2(bMax.x + 8.0f, bMax.y), ImColor(0, 0, 0, 100));
-            drawList->AddRectFilled(ImVec2(bMax.x + 5.0f, bMin.y + (bMax.y - bMin.y) * 0.2f), ImVec2(bMax.x + 8.0f, bMax.y), ImColor(0, 255, 0, 255));
+        // Weapon above box (below name)
+        if (bWeaponEnabled) {
+            const char* weapon = "AK-74M";
+            ImVec2 tSize = ImGui::CalcTextSize(weapon);
+            float textY = bMin.y - tSize.y - 2.0f;
+            drawList->AddText(ImVec2(textCenterX - tSize.x * 0.5f, textY), weaponColor, weapon);
         }
 
-        ImGui::Dummy(previewSize);
+        // Distance below box
+        if (bDistanceEnabled) {
+            const char* dist = "125m";
+            ImVec2 tSize = ImGui::CalcTextSize(dist);
+            drawList->AddText(ImVec2(textCenterX - tSize.x * 0.5f, bMax.y + 4.0f), distanceColor, dist);
+        }
+        
+        // Health bar on right side of box
+        if (bHealthEnabled) {
+            float barWidth = 4.0f * scaleFactor;
+            float barHeight = bMax.y - bMin.y;
+            float healthPercent = 0.75f;  // Example: 75% health
+            
+            // Background
+            drawList->AddRectFilled(
+                ImVec2(bMax.x + 4.0f, bMin.y), 
+                ImVec2(bMax.x + 4.0f + barWidth, bMax.y), 
+                ImColor(40, 40, 40, 200)
+            );
+            // Health fill (from bottom)
+            float fillHeight = barHeight * healthPercent;
+            drawList->AddRectFilled(
+                ImVec2(bMax.x + 4.0f, bMax.y - fillHeight), 
+                ImVec2(bMax.x + 4.0f + barWidth, bMax.y), 
+                ImColor(50, 200, 50, 255)
+            );
+        }
+
+        // Reserve space for the preview
+        ImGui::Dummy(ImVec2(previewWidth, previewHeight));
     }
 }

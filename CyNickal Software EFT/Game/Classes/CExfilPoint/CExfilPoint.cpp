@@ -2,6 +2,34 @@
 #include "CExfilPoint.h"
 #include "Game/Offsets/Offsets.h"
 #include "GUI/Color Picker/Color Picker.h"
+#include "Game/Data/ExfilNameMap.h"
+#include "GUI/Radar/Radar2D.h"
+#include "Game/EFT.h"
+
+static std::string ReadUnityString(uintptr_t ptr)
+{
+	if (!ptr) return "";
+	auto& Proc = EFT::GetProcess();
+	DMA_Connection* Conn = DMA_Connection::GetInstance();
+	if (!Conn || !Conn->IsConnected()) return "";
+
+	int len = Proc.ReadMem<int>(Conn, ptr + 0x10);
+	if (len <= 0 || len > 256) return "";
+
+	std::vector<wchar_t> buf(static_cast<size_t>(len) + 1, 0);
+	if (!Proc.ReadBuffer(Conn, ptr + 0x14, reinterpret_cast<BYTE*>(buf.data()), len * sizeof(wchar_t)))
+		return "";
+
+	std::string result;
+	result.reserve(static_cast<size_t>(len));
+	for (int i = 0; i < len; i++)
+	{
+		if (buf[i] < 128) result += static_cast<char>(buf[i]);
+		else result += '?';
+	}
+	return result;
+}
+
 
 CExfilPoint::CExfilPoint(uintptr_t ExfilPointAddress) : CBaseEntity(ExfilPointAddress)
 {
@@ -15,6 +43,7 @@ void CExfilPoint::PrepareRead_1(VMMDLL_SCATTER_HANDLE vmsh)
 
 	VMMDLL_Scatter_PrepareEx(vmsh, m_EntityAddress + Offsets::CExfiltrationPoint::ExfilStatus, sizeof(uint32_t), reinterpret_cast<BYTE*>(&m_Status), nullptr);
 	VMMDLL_Scatter_PrepareEx(vmsh, m_EntityAddress + Offsets::CExfiltrationPoint::pUnknown, sizeof(uintptr_t), reinterpret_cast<BYTE*>(&m_ComponentAddress), reinterpret_cast<DWORD*>(&m_BytesRead));
+	VMMDLL_Scatter_PrepareEx(vmsh, m_EntityAddress + Offsets::CExfiltrationPoint::pSettings, sizeof(uintptr_t), reinterpret_cast<BYTE*>(&m_SettingsAddress), nullptr);
 }
 
 void CExfilPoint::PrepareRead_2(VMMDLL_SCATTER_HANDLE vmsh)
@@ -26,6 +55,10 @@ void CExfilPoint::PrepareRead_2(VMMDLL_SCATTER_HANDLE vmsh)
 		return;
 
 	VMMDLL_Scatter_PrepareEx(vmsh, m_ComponentAddress + Offsets::CComponent::pGameObject, sizeof(uintptr_t), reinterpret_cast<BYTE*>(&m_GameObjectAddress), reinterpret_cast<DWORD*>(&m_BytesRead));
+	if (m_SettingsAddress)
+		VMMDLL_Scatter_PrepareEx(vmsh, m_SettingsAddress + Offsets::CExitTriggerSettings::pName, sizeof(uintptr_t), reinterpret_cast<BYTE*>(&m_SettingsNameAddress), nullptr);
+	else
+		m_SettingsNameAddress = 0;
 }
 
 void CExfilPoint::PrepareRead_3(VMMDLL_SCATTER_HANDLE vmsh)
@@ -90,8 +123,53 @@ void CExfilPoint::Finalize()
 	if (IsInvalid())
 		return;
 
-	m_Name = std::string(m_NameBuffer.data());
+	// Prefer internal name from ExitTriggerSettings, fallback to GameObject name
+	m_Name = ReadUnityString(m_SettingsNameAddress);
+	if (m_Name.empty())
+		m_Name = std::string(m_NameBuffer.data());
+	
 	m_Position = m_Transform.GetPosition();
+	
+	// Translate internal name to friendly display name using current map ID from GameWorld
+	std::string mapId;
+	if (EFT::pGameWorld)
+	{
+		auto& Proc = EFT::GetProcess();
+		DMA_Connection* Conn = DMA_Connection::GetInstance();
+		if (Conn && Conn->IsConnected())
+		{
+			auto mapPtr = Proc.ReadMem<uintptr_t>(Conn, EFT::pGameWorld->m_EntityAddress + Offsets::CLocalGameWorld::pMapName);
+			mapId = ReadUnityString(mapPtr);
+		}
+	}
+	
+	std::string lookupMapId = mapId;
+	if (lookupMapId.empty())
+	{
+		lookupMapId = Radar2D::GetCurrentMapId();
+		// Convert display map name back to internal for lookup (e.g., "Customs" -> "bigmap")
+		static const std::unordered_map<std::string, std::string> displayToInternal = {
+			{"Customs", "bigmap"},
+			{"Factory", "factory4_day"},
+			{"Woods", "woods"},
+			{"Reserve", "rezervbase"},
+			{"Interchange", "interchange"},
+			{"Shoreline", "shoreline"},
+			{"Labs", "laboratory"},
+			{"Lighthouse", "lighthouse"},
+			{"Streets", "tarkovstreets"},
+			{"GroundZero", "sandbox"},
+		};
+		
+		auto it = displayToInternal.find(lookupMapId);
+		if (it != displayToInternal.end())
+			lookupMapId = it->second;
+	}
+	
+	// Transform to lowercase for case-insensitive lookup
+	std::transform(lookupMapId.begin(), lookupMapId.end(), lookupMapId.begin(), ::tolower);
+	
+	m_DisplayName = ExfilNames::GetDisplayName(lookupMapId, m_Name);
 }
 
 const ImColor& CExfilPoint::GetRadarColor() const
@@ -102,4 +180,10 @@ const ImColor& CExfilPoint::GetRadarColor() const
 const ImColor& CExfilPoint::GetFuserColor() const
 {
 	return ColorPicker::Fuser::m_ExfilColor;
+}
+
+const std::string& CExfilPoint::GetDisplayName() const
+{
+	// Return the friendly display name (translated), or raw name if not translated
+	return m_DisplayName.empty() ? m_Name : m_DisplayName;
 }

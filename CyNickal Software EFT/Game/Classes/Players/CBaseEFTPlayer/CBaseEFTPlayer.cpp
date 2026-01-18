@@ -2,6 +2,7 @@
 #include "CBaseEFTPlayer.h"
 #include "Game/Offsets/Offsets.h"
 #include "Game/GOM/GOM.h"
+#include "Game/Data/SpawnTypeNameMap.h"
 
 void CBaseEFTPlayer::PrepareRead_1(VMMDLL_SCATTER_HANDLE vmsh, EPlayerType playerType)
 {
@@ -157,23 +158,44 @@ const std::string PlayerScavLabel = "PScav";
 const std::string ScavLabel = "Scav";
 const std::string& CBaseEFTPlayer::GetBaseName() const
 {
-	if (IsBoss())
-		return GetBossName();
-
+	// First check for specific spawn type with display name from unified map
+	const auto& info = SpawnTypeNames::GetEntityInfo(m_SpawnType);
+	
+	// For bosses, guards, raiders, cultists, and special entities - use the detailed name
+	if (info.category == SpawnTypeNames::EntityCategory::Boss ||
+		info.category == SpawnTypeNames::EntityCategory::Guard ||
+		info.category == SpawnTypeNames::EntityCategory::Raider ||
+		info.category == SpawnTypeNames::EntityCategory::Cultist ||
+		info.category == SpawnTypeNames::EntityCategory::Special)
+	{
+		return info.displayName;
+	}
+	
+	// Player Scav (not AI, but Scav side)
 	if (IsPlayerScav())
 		return PlayerScavLabel;
-
+	
+	// Regular AI Scav
 	if (IsAi())
+	{
+		// Use the display name from the map if available (e.g., "Sniper Scav", "Cursed Scav")
+		if (info.category == SpawnTypeNames::EntityCategory::Scav)
+			return info.displayName;
 		return ScavLabel;
-
-	return PMCLabel;
+	}
+	
+	// PMC - show faction (USEC/BEAR) instead of generic "PMC"
+	return SpawnTypeNames::GetFactionName(m_Side);
 }
 
-#include "BossNameMap.h"
+// Use unified SpawnTypeNameMap instead of separate BossNameMap
 const std::string BossLabel = "Boss";
 const std::string& CBaseEFTPlayer::GetBossName() const
 {
-	return BossNameMap.contains(m_SpawnType) ? BossNameMap.at(m_SpawnType) : BossLabel;
+	const auto& info = SpawnTypeNames::GetEntityInfo(m_SpawnType);
+	if (info.category == SpawnTypeNames::EntityCategory::Boss)
+		return info.displayName;
+	return BossLabel;
 }
 
 #include "GUI/Color Picker/Color Picker.h"
@@ -207,24 +229,17 @@ const ImColor CBaseEFTPlayer::GetRadarColor() const
 
 const bool CBaseEFTPlayer::IsBoss() const
 {
-	switch (m_SpawnType)
-	{
-	case ESpawnType::BigPipe:
-	case ESpawnType::BirdEye:
-	case ESpawnType::Knight:
-	case ESpawnType::Killa:
-	case ESpawnType::Kaban:
-	case ESpawnType::Partisan:
-	case ESpawnType::Sanitar:
-	case ESpawnType::Gluhar:
-	case ESpawnType::Kolontay:
-	case ESpawnType::Tagilla:
-	case ESpawnType::Shturman:
-	case ESpawnType::Reshala:
-		return true;
-	default:
-		return false;
-	}
+	return SpawnTypeNames::IsBoss(m_SpawnType);
+}
+
+const bool CBaseEFTPlayer::IsRaider() const
+{
+	return SpawnTypeNames::IsRaider(m_SpawnType);
+}
+
+const bool CBaseEFTPlayer::IsGuard() const
+{
+	return SpawnTypeNames::IsGuard(m_SpawnType);
 }
 
 const bool CBaseEFTPlayer::IsInvalid() const

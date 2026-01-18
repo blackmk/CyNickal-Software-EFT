@@ -7,7 +7,8 @@ enum class EBoneIndex : uint32_t
 	Pelvis = 14,
 	Head = 133,
 	Neck = 132,
-	Spine3 = 37,
+	Spine2 = 36,  // Torso
+	Spine3 = 37,  // Chest
 	LThigh1 = 15,
 	LThigh2 = 16,
 	LCalf = 17,

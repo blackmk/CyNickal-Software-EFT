@@ -1,6 +1,11 @@
 #include "pch.h"
 #include "Player Table.h"
 #include "Game/EFT.h"
+#include "Game/Data/SpawnTypeNameMap.h"
+#include "Game/Classes/Players/CObservedPlayer/CObservedPlayer.h"
+#include <chrono>
+#include <mutex>
+#include <print>
 
 void PlayerTable::Render()
 {
@@ -30,16 +35,30 @@ void PlayerTable::Render()
 		ImGui::TableSetupColumn("Ammo");
 		ImGui::TableHeadersRow();
 
+		static auto LastBusyLog = std::chrono::steady_clock::now();
 		auto& PlayerList = EFT::GetRegisteredPlayers();
-		std::scoped_lock Lock(PlayerList.m_Mut);
-		for (auto& Player : PlayerList.m_Players)
-			std::visit([](auto& Player) { PlayerTable::AddRow(Player); }, Player);
+		auto PlayerLock = std::unique_lock<std::mutex>(PlayerList.m_Mut, std::try_to_lock);
+		if (!PlayerLock.owns_lock())
+		{
+			auto Now = std::chrono::steady_clock::now();
+			if (Now - LastBusyLog > std::chrono::seconds(1))
+			{
+				std::println("[PlayerTable] Skipping render: player data busy");
+				LastBusyLog = Now;
+			}
+		}
+		else
+		{
+			for (auto& Player : PlayerList.m_Players)
+				std::visit([](auto& Player) { PlayerTable::AddRow(Player); }, Player);
+		}
 
 		ImGui::EndTable();
 	}
 
 	ImGui::End();
 }
+
 
 void HandRows(const CBaseEFTPlayer& Player)
 {
@@ -86,9 +105,11 @@ void PlayerTable::AddRow(const CClientPlayer& Player)
 	ImGui::TableNextColumn();
 	ImGui::Text("%.2f", Player.m_Yaw);
 	ImGui::TableNextColumn();
-	ImGui::Text("%d", Player.m_Side);
+	// Show faction name instead of raw integer
+	ImGui::Text("%s", SpawnTypeNames::GetFactionName(Player.m_Side).c_str());
 	ImGui::TableNextColumn();
-	ImGui::Text("%d", Player.m_SpawnType);
+	// Show spawn type display name instead of raw integer
+	ImGui::Text("%s", SpawnTypeNames::GetDisplayName(Player.m_SpawnType).c_str());
 	ImGui::TableNextColumn();
 	ImGui::Text("N/A");
 	ImGui::TableNextColumn();
@@ -117,15 +138,18 @@ void PlayerTable::AddRow(const CObservedPlayer& Player)
 	ImGui::TableNextColumn();
 	ImGui::Text("%.2f", Player.m_Yaw);
 	ImGui::TableNextColumn();
-	ImGui::Text("%d", Player.m_Side);
+	// Show faction name instead of raw integer
+	ImGui::Text("%s", SpawnTypeNames::GetFactionName(Player.m_Side).c_str());
 	ImGui::TableNextColumn();
-	ImGui::Text("%d", Player.m_SpawnType);
+	// Show spawn type display name instead of raw integer
+	ImGui::Text("%s", SpawnTypeNames::GetDisplayName(Player.m_SpawnType).c_str());
 	ImGui::TableNextColumn();
 	ImGui::Text("%s", Player.m_Voice);
 	ImGui::TableNextColumn();
 	ImGui::Text("N/A");
 	ImGui::TableNextColumn();
-	ImGui::Text("%X", Player.m_TagStatus);
+	// Show human-readable health status using the helper function
+	ImGui::Text("%s", GetHealthStatusString(Player.m_TagStatus));
 	ImGui::TableNextColumn();
 	ImGui::Text("N/A");
 	HandRows(Player);

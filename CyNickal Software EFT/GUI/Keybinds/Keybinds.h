@@ -9,13 +9,18 @@ public:
 	bool m_bTargetPC{ false };
 	bool m_bRadarPC{ false };
 	bool m_bWaitingForKey{ false };
+	bool m_bToggle{ false };
+	bool m_bState{ false };
+	bool m_bLastKeyStatus{ false };
 
 public:
 	void Render();
 	void RenderTableRow();
-	const bool IsActive(DMA_Connection* Conn);
+	bool IsActive(DMA_Connection* Conn, bool bHoldMode = false);
+	bool GetState() const { return m_bState; }
 	const char* GetKeyName(uint32_t vkCode);
 };
+
 
 class Keybinds
 {

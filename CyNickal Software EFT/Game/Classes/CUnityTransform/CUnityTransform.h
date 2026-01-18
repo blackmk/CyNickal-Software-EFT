@@ -29,6 +29,12 @@ public:
 	void QuickRead(VMMDLL_SCATTER_HANDLE vmsh);
 	void QuickFinalize();
 	Vector3 GetPosition() const;
+	Quaternion GetRotation() const;
+
+	// Synchronous initialization - reads all data immediately (like reference implementation)
+	bool CompleteInit();
+	// Synchronous update - reads vertices immediately
+	bool SyncUpdate();
 
 	void Print();
 };

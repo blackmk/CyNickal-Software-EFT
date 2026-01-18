@@ -58,7 +58,15 @@ namespace Offsets
 	{
 		inline constexpr std::ptrdiff_t pUnknown{ 0x10 };
 		inline constexpr std::ptrdiff_t ExfilStatus{ 0x58 };
+		inline constexpr std::ptrdiff_t pSettings{ 0x98 };
 	}
+	
+	namespace CExitTriggerSettings
+	{
+		inline constexpr std::ptrdiff_t pId{ 0x10 };
+		inline constexpr std::ptrdiff_t pName{ 0x18 };
+	}
+
 
 	namespace CComponents
 	{
@@ -85,8 +93,19 @@ namespace Offsets
 		inline constexpr std::ptrdiff_t pOptics{ 0x180 };
 		inline constexpr std::ptrdiff_t bAiming{ 0x145 };
 	}
+	namespace CSightNBone
+	{
+		inline constexpr std::ptrdiff_t pMod{ 0x10 };
+	}
+	namespace CSightComponent
+	{
+		inline constexpr std::ptrdiff_t ScopesSelectedModes{ 0x30 };
+		inline constexpr std::ptrdiff_t SelectedScope{ 0x38 };
+		inline constexpr std::ptrdiff_t ScopeZoomValue{ 0x3C };
+	}
 	namespace CObservedPlayer
 	{
+
 		inline constexpr std::ptrdiff_t pPlayerBody{ 0xD8 };
 		inline constexpr std::ptrdiff_t pPlayerController{ 0x28 };
 		inline constexpr std::ptrdiff_t IsAi{ 0xA0 };
@@ -106,6 +125,7 @@ namespace Offsets
 	namespace CObservedMovementState
 	{
 		inline constexpr std::ptrdiff_t Rotation{ 0x20 };
+		inline constexpr std::ptrdiff_t Velocity{ 0x30 };  // Vector3
 		inline constexpr std::ptrdiff_t pObservedPlayerHands{ 0x130 };
 	}
 	namespace CMovementContext
@@ -237,10 +257,16 @@ namespace Offsets
 	{
 		inline constexpr std::ptrdiff_t pItem{ 0x70 };
 	}
-	/* namespace: EFT.NextObservedPlayer, class: ObservedPlayerHandsController : System::Object */
 	namespace CObservedPlayerHands
 	{
 		inline constexpr std::ptrdiff_t pItem{ 0x58 };
+	}
+
+	/* EFT, class: FirearmController */
+	namespace CFirearmController
+	{
+		inline constexpr std::ptrdiff_t Fireport{ 0x150 };
+		// To get TransformInternal: Fireport -> 0x10 -> 0x10
 	}
 
 	namespace CMonoBehavior
@@ -259,5 +285,51 @@ namespace Offsets
 	namespace CLootableContainer
 	{
 		inline constexpr std::ptrdiff_t pBSGID{ 0x170 };
+	}
+
+	/* EFT.InventoryLogic::AmmoTemplate */
+	namespace CAmmoTemplate
+	{
+		inline constexpr std::ptrdiff_t InitialSpeed{ 0x1A4 };
+		inline constexpr std::ptrdiff_t BallisticCoefficient{ 0x1B8 };
+		inline constexpr std::ptrdiff_t BulletMassGram{ 0x25C };
+		inline constexpr std::ptrdiff_t BulletDiameterMilimeters{ 0x260 };
+	}
+
+	/* EFT.InventoryLogic::WeaponTemplate */
+	namespace CWeaponTemplate
+	{
+		inline constexpr std::ptrdiff_t Velocity{ 0x254 };
+	}
+
+	/* EFT.InventoryLogic::ModTemplate */
+	namespace CModTemplate
+	{
+		inline constexpr std::ptrdiff_t Velocity{ 0x188 };
+	}
+
+	/* EFT.InventoryLogic::Weapon */
+	namespace CLootItemWeapon
+	{
+		inline constexpr std::ptrdiff_t Chambers{ 0xB0 };
+		inline constexpr std::ptrdiff_t MagSlotCache{ 0xC8 };
+	}
+
+	/* EFT.InventoryLogic::Mod */
+	namespace CLootItemMod
+	{
+		inline constexpr std::ptrdiff_t Slots{ 0x80 };
+	}
+
+	/* EFT.InventoryLogic::MagazineItem */
+	namespace CMagazineItem
+	{
+		inline constexpr std::ptrdiff_t Cartridges{ 0xA8 };
+	}
+
+	namespace CUnityList
+	{
+		inline constexpr std::ptrdiff_t Count{ 0x18 };
+		inline constexpr std::ptrdiff_t ArrayBase{ 0x10 };
 	}
 };

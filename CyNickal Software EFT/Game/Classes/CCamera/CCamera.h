@@ -37,6 +37,10 @@ private:
 	float m_AspectRatio{ 0.0f };
 	float m_PrivateAspectRatio{ 0.0f };
 
+	std::mutex m_ZoomMutex{};
+	float m_Zoom{ 1.0f };
+	float m_PrivateZoom{ 1.0f };
+
 	std::mutex m_MatrixMutex{};
 	Matrix44 m_PrivateViewMatrix{ 0 };
 	Matrix44 m_ViewMatrix{ 0 };
@@ -45,10 +49,12 @@ private:
 	inline void SetViewMatrix(const Matrix44& Mat);
 	inline void SetFOV(const float& FOV);
 	inline void SetAspectRatio(const float& AspectRatio);
+	inline void SetZoom(const float& Zoom);
 
 public:
 	Matrix44 GetViewMatrix();
 	const float GetFOV();
 	const float GetAspectRatio();
+	const float GetZoom();
 	const std::string_view GetName() const;
 };

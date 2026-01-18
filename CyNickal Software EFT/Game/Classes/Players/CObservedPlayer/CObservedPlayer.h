@@ -1,28 +1,43 @@
 #pragma once
 #include "Game/Classes/Players/CBaseEFTPlayer/CBaseEFTPlayer.h"
 
+// Bitmask flags for player tag status - values must match EFT's ETagStatus enum
 enum class ETagStatus : uint32_t
 {
 	Unaware = 1,
 	Aware = 2,
-	Combat = 3,
-	Solo = 4,
-	Coop = 5,
-	Bear = 6,
-	Usec = 7,
-	Scav = 8,
-	TargetSolo = 9,
-	TargetMultiple = 10,
-	Healthy = 11,
-	Injured = 12,
-	BadlyInjured = 13,
-	Dying = 14,
-	Birdeye = 15,
-	Knight = 16,
-	BigPipe = 17,
-	BlackDivision = 18,
-	VSRF = 19,
+	Combat = 4,
+	Solo = 8,
+	Coop = 16,
+	Bear = 32,
+	Usec = 64,
+	Scav = 128,
+	TargetSolo = 256,
+	TargetMultiple = 512,
+	Healthy = 1024,
+	Injured = 2048,
+	BadlyInjured = 4096,
+	Dying = 8192,
+	Birdeye = 16384,
+	Knight = 32768,
+	BigPipe = 65536,
+	BlackDivision = 131072,
+	VSRF = 262144,
 };
+
+// Helper function to get human-readable health status string
+inline const char* GetHealthStatusString(uint32_t tagStatus)
+{
+	if (tagStatus & static_cast<uint32_t>(ETagStatus::Dying))
+		return "Dying";
+	if (tagStatus & static_cast<uint32_t>(ETagStatus::BadlyInjured))
+		return "Badly Injured";
+	if (tagStatus & static_cast<uint32_t>(ETagStatus::Injured))
+		return "Injured";
+	if (tagStatus & static_cast<uint32_t>(ETagStatus::Healthy))
+		return "Healthy";
+	return "Unknown";
+}
 
 class CObservedPlayer : public CBaseEFTPlayer
 {

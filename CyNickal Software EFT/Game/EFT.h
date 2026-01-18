@@ -14,6 +14,9 @@ public:
 
 	static bool TryMakeNewGameWorld(DMA_Connection* Conn);
 	static bool IsGameWorldInitialized();
+	static bool IsInRaid();
+	static bool IsDiscoveryPending();
+	static void UpdateRaidState(DMA_Connection* Conn);
 private:
 	static inline Process Proc{};
 	static void MakeNewGameWorld(DMA_Connection* Conn);

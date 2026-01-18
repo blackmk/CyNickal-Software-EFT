@@ -1,6 +1,9 @@
 #include "pch.h"
 #include "GUI/Item Table/Item Table.h"
 #include "Game/EFT.h"
+#include <chrono>
+#include <mutex>
+#include <print>
 
 void ItemTable::Render()
 {
@@ -27,10 +30,41 @@ void ItemTable::Render()
 		ImGui::TableSetupColumn("Stack Count");
 		ImGui::TableHeadersRow();
 
-		auto LocalPlayerPos = EFT::GetRegisteredPlayers().GetLocalPlayerPosition();
+		static auto LastBusyPlayerLog = std::chrono::steady_clock::now();
+		static auto LastBusyLootLog = std::chrono::steady_clock::now();
+
+		auto& PlayerList = EFT::GetRegisteredPlayers();
+		auto PlayerLock = std::unique_lock<std::mutex>(PlayerList.m_Mut, std::try_to_lock);
+		if (!PlayerLock.owns_lock())
+		{
+			auto Now = std::chrono::steady_clock::now();
+			if (Now - LastBusyPlayerLog > std::chrono::seconds(1))
+			{
+				std::println("[ItemTable] Skipping render: player data busy");
+				LastBusyPlayerLog = Now;
+			}
+			ImGui::EndTable();
+			ImGui::End();
+			return;
+		}
+
+		auto LocalPlayerPos = PlayerList.GetLocalPlayerPosition();
 		auto& LootList = EFT::GetLootList();
 
-		std::scoped_lock lk(LootList.m_ObservedItems.m_Mut);
+		auto LootLock = std::unique_lock<std::mutex>(LootList.m_ObservedItems.m_Mut, std::try_to_lock);
+		if (!LootLock.owns_lock())
+		{
+			auto Now = std::chrono::steady_clock::now();
+			if (Now - LastBusyLootLog > std::chrono::seconds(1))
+			{
+				std::println("[ItemTable] Skipping render: loot data busy");
+				LastBusyLootLog = Now;
+			}
+			ImGui::EndTable();
+			ImGui::End();
+			return;
+		}
+
 		for (auto& Item : LootList.m_ObservedItems.m_Entities)
 			AddRow(Item, LocalPlayerPos);
 
@@ -39,6 +73,7 @@ void ItemTable::Render()
 
 	ImGui::End();
 }
+
 
 void ItemTable::AddRow(const CObservedLootItem& Loot, const Vector3& LocalPlayerPos)
 {

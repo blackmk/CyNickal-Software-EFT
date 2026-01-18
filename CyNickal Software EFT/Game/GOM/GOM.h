@@ -8,6 +8,7 @@ public:
 	static bool Initialize(DMA_Connection* Conn);
 	static uintptr_t FindGameWorldAddressFromCache(DMA_Connection* Conn);
 	static const uintptr_t& GetMainPlayerAddress() { return m_MainPlayerAddress; }
+	static void ResetCache();
 private:
 	static inline uintptr_t GameObjectManagerAddress{ 0 };
 	static inline uintptr_t LastActiveNode{ 0 };

@@ -179,9 +179,8 @@ void CObservedPlayer::QuickFinalize()
 
 const bool CObservedPlayer::IsInCondition(const ETagStatus status) const
 {
-	std::bitset<32> statusBits(m_TagStatus);
-
-	return statusBits.test(std::to_underlying(status));
+	// Use bitwise AND to check if the status flag is set in m_TagStatus
+	return (m_TagStatus & static_cast<uint32_t>(status)) != 0;
 }
 
 const bool CObservedPlayer::IsInCriticalHealthStatus() const

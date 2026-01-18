@@ -61,6 +61,7 @@ void CCamera::PrepareRead_4(VMMDLL_SCATTER_HANDLE vmsh)
 	VMMDLL_Scatter_PrepareEx(vmsh, m_CameraInfoAddress + Offsets::CCameraInfo::Matrix, sizeof(Matrix44), reinterpret_cast<BYTE*>(&m_PrivateViewMatrix), reinterpret_cast<DWORD*>(&m_BytesRead));
 	VMMDLL_Scatter_PrepareEx(vmsh, m_CameraInfoAddress + Offsets::CCameraInfo::FOV, sizeof(float), reinterpret_cast<BYTE*>(&m_PrivateFOV), nullptr);
 	VMMDLL_Scatter_PrepareEx(vmsh, m_CameraInfoAddress + Offsets::CCameraInfo::AspectRatio, sizeof(float), reinterpret_cast<BYTE*>(&m_PrivateAspectRatio), nullptr);
+	VMMDLL_Scatter_PrepareEx(vmsh, m_CameraInfoAddress + Offsets::CCameraInfo::Zoom, sizeof(float), reinterpret_cast<BYTE*>(&m_PrivateZoom), nullptr);
 }
 
 void CCamera::QuickRead(VMMDLL_SCATTER_HANDLE vmsh)
@@ -71,7 +72,9 @@ void CCamera::QuickRead(VMMDLL_SCATTER_HANDLE vmsh)
 	VMMDLL_Scatter_PrepareEx(vmsh, m_CameraInfoAddress + Offsets::CCameraInfo::Matrix, sizeof(Matrix44), reinterpret_cast<BYTE*>(&m_PrivateViewMatrix), reinterpret_cast<DWORD*>(&m_BytesRead));
 	VMMDLL_Scatter_PrepareEx(vmsh, m_CameraInfoAddress + Offsets::CCameraInfo::FOV, sizeof(float), reinterpret_cast<BYTE*>(&m_PrivateFOV), nullptr);
 	VMMDLL_Scatter_PrepareEx(vmsh, m_CameraInfoAddress + Offsets::CCameraInfo::AspectRatio, sizeof(float), reinterpret_cast<BYTE*>(&m_PrivateAspectRatio), nullptr);
+	VMMDLL_Scatter_PrepareEx(vmsh, m_CameraInfoAddress + Offsets::CCameraInfo::Zoom, sizeof(float), reinterpret_cast<BYTE*>(&m_PrivateZoom), nullptr);
 }
+
 
 void CCamera::Finalize()
 {
@@ -84,8 +87,9 @@ void CCamera::Finalize()
 	SetViewMatrix(m_PrivateViewMatrix);
 	SetFOV(m_PrivateFOV);
 	SetAspectRatio(m_PrivateAspectRatio);
+	SetZoom(m_PrivateZoom);
 
-	std::println("[CCamera] Loaded camera: {} with {{fov{},apsect{}}}", GetName(), GetFOV(), GetAspectRatio());
+	std::println("[CCamera] Loaded camera: {} with {{fov{},apsect{},zoom{}}}", GetName(), GetFOV(), GetAspectRatio(), GetZoom());
 }
 
 void CCamera::QuickFinalize()
@@ -96,7 +100,9 @@ void CCamera::QuickFinalize()
 	SetViewMatrix(m_PrivateViewMatrix);
 	SetFOV(m_PrivateFOV);
 	SetAspectRatio(m_PrivateAspectRatio);
+	SetZoom(m_PrivateZoom);
 }
+
 
 void CCamera::FullUpdate(DMA_Connection* Conn)
 {
@@ -141,6 +147,12 @@ inline void CCamera::SetAspectRatio(const float& AspectRatio)
 	m_AspectRatio = AspectRatio;
 }
 
+inline void CCamera::SetZoom(const float& Zoom)
+{
+	std::scoped_lock lock(m_ZoomMutex);
+	m_Zoom = Zoom;
+}
+
 const std::string_view CCamera::GetName() const
 {
 	return std::string_view(m_NameBuffer.data());
@@ -166,4 +178,10 @@ const float CCamera::GetAspectRatio()
 {
 	std::scoped_lock lock(m_AspectRatioMutex);
 	return m_AspectRatio;
+}
+
+const float CCamera::GetZoom()
+{
+	std::scoped_lock lock(m_ZoomMutex);
+	return m_Zoom;
 }

@@ -3,16 +3,26 @@
 #include "Game/Camera List/Camera List.h"
 #include "GUI/Color Picker/Color Picker.h"
 #include "Game/EFT.h"
+#include <mutex>
 
 void DrawESPLoot::DrawAll(const ImVec2& WindowPos, ImDrawList* DrawList)
+
 {
 	if (!bMasterToggle) return;
 
-	auto LocalPlayerPos = EFT::GetRegisteredPlayers().GetLocalPlayerPosition();
+	auto& PlayerList = EFT::GetRegisteredPlayers();
+
+	std::scoped_lock PlayerLock(PlayerList.m_Mut);
+
+	Vector3 LocalPlayerPos{};
+	auto LocalPlayer = PlayerList.GetLocalPlayer();
+	if (LocalPlayer && !LocalPlayer->IsInvalid())
+		LocalPlayerPos = LocalPlayer->GetBonePosition(EBoneIndex::Root);
 
 	DrawAllContainers(WindowPos, DrawList, LocalPlayerPos);
 	DrawAllItems(WindowPos, DrawList, LocalPlayerPos);
 }
+
 
 void DrawESPLoot::DrawSettings()
 {
@@ -34,7 +44,9 @@ void DrawESPLoot::DrawAllItems(const ImVec2& WindowPos, ImDrawList* DrawList, co
 
 	auto& LootList = EFT::GetLootList();
 	auto& ObservedItems = LootList.m_ObservedItems;
-	std::scoped_lock lk(ObservedItems.m_Mut);
+
+	std::scoped_lock LootLock(ObservedItems.m_Mut);
+
 	for (auto& Loot : ObservedItems.m_Entities)
 		DrawItem(Loot, DrawList, WindowPos, LocalPlayerPos);
 }
@@ -45,10 +57,13 @@ void DrawESPLoot::DrawAllContainers(const ImVec2& WindowPos, ImDrawList* DrawLis
 
 	auto& LootList = EFT::GetLootList();
 	auto& LootableContainers = LootList.m_LootableContainers;
-	std::scoped_lock lk(LootableContainers.m_Mut);
+
+	std::scoped_lock ContainerLock(LootableContainers.m_Mut);
+
 	for (auto& Container : LootableContainers.m_Entities)
 		DrawContainer(Container, DrawList, WindowPos, LocalPlayerPos);
 }
+
 
 void DrawESPLoot::DrawItem(CObservedLootItem& Item, ImDrawList* DrawList, ImVec2 WindowPos, const Vector3& LocalPlayerPos)
 {

@@ -3,8 +3,10 @@
 #include "Game/Camera List/Camera List.h"
 #include "GUI/Color Picker/Color Picker.h"
 #include "Game/EFT.h"
+#include <mutex>
 
 void DrawExfils::DrawAll(const ImVec2& WindowPos, ImDrawList* DrawList)
+
 {
 	if (!bMasterToggle) return;
 
@@ -12,11 +14,16 @@ void DrawExfils::DrawAll(const ImVec2& WindowPos, ImDrawList* DrawList)
 	if (EFT::pGameWorld->m_pExfilController == nullptr) return;
 
 	auto& ExfilController = EFT::GetExfilController();
-	std::scoped_lock lk(ExfilController.m_ExfilMutex);
+	auto& PlayerList = EFT::GetRegisteredPlayers();
+
+	std::scoped_lock Lock(ExfilController.m_ExfilMutex, PlayerList.m_Mut);
 
 	Vector2 ScreenPos{};
 
-	auto LocalPlayerPos = EFT::GetRegisteredPlayers().GetLocalPlayerPosition();
+	Vector3 LocalPlayerPos{};
+	auto LocalPlayer = PlayerList.GetLocalPlayer();
+	if (LocalPlayer && !LocalPlayer->IsInvalid())
+		LocalPlayerPos = LocalPlayer->GetBonePosition(EBoneIndex::Root);
 
 	for (auto& Exfil : ExfilController.m_Exfils)
 	{
@@ -24,7 +31,8 @@ void DrawExfils::DrawAll(const ImVec2& WindowPos, ImDrawList* DrawList)
 
 		float Distance = LocalPlayerPos.DistanceTo(Exfil.m_Position);
 
-		std::string Text = std::format("{0:s} [{1:.0f}m]", Exfil.m_Name, Distance);
+		// Use friendly display name instead of raw internal name
+		std::string Text = std::format("{0:s} [{1:.0f}m]", Exfil.GetDisplayName(), Distance);
 		auto TextSize = ImGui::CalcTextSize(Text.c_str());
 		DrawList->AddText(
 			ImVec2(WindowPos.x + ScreenPos.x - (TextSize.x / 2.0f), WindowPos.y + ScreenPos.y),

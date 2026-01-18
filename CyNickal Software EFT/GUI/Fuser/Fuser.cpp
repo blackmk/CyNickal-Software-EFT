@@ -9,6 +9,9 @@
 #include "Game/EFT.h"
 #include "Game/Camera List/Camera List.h"
 
+#include "../Main Window/MonitorHelper.h"
+#include "../Main Window/Main Window.h"
+
 void Fuser::Render()
 {
 	if (!bMasterToggle) return;
@@ -16,7 +19,16 @@ void Fuser::Render()
 	if (!EFT::pGameWorld)
 		return;
 
-	ImGui::SetNextWindowPos(ImVec2(0, 0), ImGuiCond_FirstUseEver);
+	// Calculate position based on selected monitor
+	ImVec2 pos(0, 0);
+	auto monitors = MonitorHelper::GetAllMonitors();
+	if (Fuser::m_SelectedMonitor >= 0 && Fuser::m_SelectedMonitor < monitors.size())
+	{
+		pos.x = static_cast<float>(monitors[Fuser::m_SelectedMonitor].rcMonitor.left);
+		pos.y = static_cast<float>(monitors[Fuser::m_SelectedMonitor].rcMonitor.top);
+	}
+
+	ImGui::SetNextWindowPos(pos, ImGuiCond_Always);
 	ImGui::SetNextWindowSize(Fuser::m_ScreenSize);
 	ImGui::PushStyleColor(ImGuiCol_WindowBg, ImVec4(0.0f, 0.0f, 0.0f, 0.0f));
 	ImGui::Begin("Fuser", nullptr, ImGuiWindowFlags_NoDecoration);
@@ -55,17 +67,12 @@ void Fuser::RenderSettings()
 		if (DrawESPPlayers::bOpticESP)
 		{
 			ImGui::Spacing();
-			ImGui::SetNextItemWidth(100.0f);
-			ImGui::InputScalarN("Optic Index", ImGuiDataType_U32, &CameraList::m_OpticIndex, 1);
-			
-			static float fNewRadius{ 300.0f };
-			ImGui::SetNextItemWidth(150.0f);
-			if (ImGui::SliderFloat("Optic Radius", &fNewRadius, 100.0f, 500.0f, "%.0f")) {
-				CameraList::SetOpticRadius(fNewRadius);
-			}
+			ImGui::TextColored(ImVec4(0.5f, 0.8f, 0.5f, 1.0f), "Optic camera auto-detected");
+			ImGui::Text("Auto Radius: %.0f", CameraList::GetOpticRadius());
 		}
 		ImGui::Unindent();
 	}
+
 
 	// Player Visuals Section
 	if (ImGui::CollapsingHeader("Player Visuals", ImGuiTreeNodeFlags_DefaultOpen))
@@ -97,10 +104,35 @@ void Fuser::RenderSettings()
 	if (ImGui::CollapsingHeader("Screen Settings"))
 	{
 		ImGui::Indent();
+		
+		auto monitors = MonitorHelper::GetAllMonitors();
+		std::string preview = "Select Monitor...";
+		if (Fuser::m_SelectedMonitor >= 0 && Fuser::m_SelectedMonitor < monitors.size())
+			preview = monitors[Fuser::m_SelectedMonitor].friendlyName;
+
+		if (ImGui::BeginCombo("Target Monitor", preview.c_str()))
+		{
+			for (const auto& m : monitors)
+			{
+				bool isSelected = (Fuser::m_SelectedMonitor == m.index);
+				if (ImGui::Selectable(m.friendlyName.c_str(), isSelected))
+				{
+					Fuser::m_SelectedMonitor = m.index;
+					Fuser::m_ScreenSize.x = static_cast<float>(abs(m.rcMonitor.right - m.rcMonitor.left));
+					Fuser::m_ScreenSize.y = static_cast<float>(abs(m.rcMonitor.bottom - m.rcMonitor.top));
+					MonitorHelper::MoveWindowToMonitor(MainWindow::g_hWnd, m.index);
+				}
+				if (isSelected) ImGui::SetItemDefaultFocus();
+			}
+			ImGui::EndCombo();
+		}
+
+		// Keep manual inputs as fallback/info
 		ImGui::SetNextItemWidth(120.0f);
-		ImGui::InputFloat("Screen Width", &Fuser::m_ScreenSize.x, 1.0f, 10.0f, "%.0f");
+		ImGui::InputFloat("Screen Width", &Fuser::m_ScreenSize.x, 1.0f, 10.0f, "%.0f", ImGuiInputTextFlags_ReadOnly);
 		ImGui::SetNextItemWidth(120.0f);
-		ImGui::InputFloat("Screen Height", &Fuser::m_ScreenSize.y, 1.0f, 10.0f, "%.0f");
+		ImGui::InputFloat("Screen Height", &Fuser::m_ScreenSize.y, 1.0f, 10.0f, "%.0f", ImGuiInputTextFlags_ReadOnly);
+		
 		ImGui::Unindent();
 	}
 

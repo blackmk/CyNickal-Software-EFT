@@ -38,15 +38,48 @@ void DMA_Thread_Main()
 	}
 
 	CTimer LightRefresh(std::chrono::seconds(5), [&Conn]() { Conn->LightRefresh(); });
-	CTimer ResponseData(std::chrono::milliseconds(25), [&Conn]() { ResponseData::OnDMAFrame(Conn); });
-	CTimer Player_Quick(std::chrono::milliseconds(25), [&Conn]() { EFT::QuickUpdatePlayers(Conn); });
-	CTimer Player_Allocations(std::chrono::seconds(5), [&Conn]() { EFT::HandlePlayerAllocations(Conn); });
-	CTimer Camera_UpdateViewMatrix(std::chrono::milliseconds(2), [&Conn]() { CameraList::QuickUpdateNecessaryCameras(Conn); });
-	CTimer Keybinds(std::chrono::milliseconds(50), [&Conn]() { Keybinds::OnDMAFrame(Conn); });
-	CTimer GameWorld_Retry(std::chrono::seconds(5), [&Conn]() {
-		static bool bLoggedWaiting = false;
-		if (!EFT::IsGameWorldInitialized())
+	CTimer ResponseData(std::chrono::milliseconds(25), [&Conn]() { 
+		try { ResponseData::OnDMAFrame(Conn); } 
+		catch (...) { /* Not in raid or data unavailable */ }
+	});
+	CTimer Player_Quick(std::chrono::milliseconds(25), [&Conn]() { 
+		try { EFT::QuickUpdatePlayers(Conn); } 
+		catch (...) { /* Not in raid */ }
+	});
+	CTimer Player_Allocations(std::chrono::seconds(5), [&Conn]() { 
+		try { EFT::HandlePlayerAllocations(Conn); } 
+		catch (...) { /* Not in raid */ }
+	});
+	CTimer Camera_UpdateViewMatrix(std::chrono::milliseconds(2), [&Conn]() { 
+		try { CameraList::QuickUpdateNecessaryCameras(Conn); } 
+		catch (...) { /* Not in raid */ }
+	});
+	CTimer Keybinds(std::chrono::milliseconds(50), [&Conn]() { 
+		try { Keybinds::OnDMAFrame(Conn); } 
+		catch (...) { /* Keybind error */ }
+	});
+	CTimer RaidState(std::chrono::seconds(1), [&Conn]() { 
+		try { EFT::UpdateRaidState(Conn); } 
+		catch (...) { /* State check failed */ }
+	});
+	CTimer GameWorld_Retry(std::chrono::seconds(2), [&Conn]() {
+		try
 		{
+			static bool bLoggedWaiting = false;
+			static auto LastPendingLog = std::chrono::steady_clock::now() - std::chrono::seconds(15);
+			static uint64_t tickCount = 0;
+			tickCount++;
+
+			// Periodic tick logging to confirm loop is running
+			if (tickCount % 5 == 0)
+				std::println("[DMA Thread] GameWorld_Retry tick #{}", tickCount);
+
+			if (EFT::IsGameWorldInitialized())
+			{
+				bLoggedWaiting = false;
+				return;
+			}
+
 			if (!bLoggedWaiting)
 			{
 				std::println("[DMA Thread] Waiting for GameWorld... (Player not in raid?)");
@@ -57,7 +90,26 @@ void DMA_Thread_Main()
 			{
 				std::println("[DMA Thread] LocalGameWorld initialized successfully!");
 				bLoggedWaiting = false;
+				return;
 			}
+
+			if (EFT::IsDiscoveryPending())
+			{
+				auto now = std::chrono::steady_clock::now();
+				if (now - LastPendingLog >= std::chrono::seconds(10))
+				{
+					std::println("[DMA Thread] Discovery still pending, will keep retrying...");
+					LastPendingLog = now;
+				}
+			}
+		}
+		catch (const std::exception& e)
+		{
+			std::println("[DMA Thread] GameWorld_Retry exception: {}", e.what());
+		}
+		catch (...)
+		{
+			std::println("[DMA Thread] GameWorld_Retry unknown exception");
 		}
 	});
 
@@ -70,8 +122,10 @@ void DMA_Thread_Main()
 		Player_Allocations.Tick(TimeNow);
 		Camera_UpdateViewMatrix.Tick(TimeNow);
 		Keybinds.Tick(TimeNow);
+		RaidState.Tick(TimeNow);
 		GameWorld_Retry.Tick(TimeNow);
 	}
+
 
 	Conn->EndConnection();
 }

@@ -3,6 +3,7 @@
 #include "Game/Classes/CBaseEntity/CBaseEntity.h"
 #include "Game/Classes/Players/CClientPlayer/CClientPlayer.h"
 #include "Game/Classes/Players/CObservedPlayer/CObservedPlayer.h"
+#include "Game/Enums/EBoneIndex.h"
 
 class CRegisteredPlayers : public CBaseEntity
 {

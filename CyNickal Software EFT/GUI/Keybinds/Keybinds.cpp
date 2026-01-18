@@ -158,12 +158,13 @@ void Keybinds::Render()
 	ImGui::Spacing();
 	
 	// Table-based layout for keybinds
-	if (ImGui::BeginTable("KeybindsTable", 4, ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg))
+	if (ImGui::BeginTable("KeybindsTable", 5, ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg))
 	{
-		ImGui::TableSetupColumn("Action", ImGuiTableColumnFlags_WidthFixed, 120.0f);
-		ImGui::TableSetupColumn("Key", ImGuiTableColumnFlags_WidthFixed, 120.0f);
+		ImGui::TableSetupColumn("Action", ImGuiTableColumnFlags_WidthFixed, 100.0f);
+		ImGui::TableSetupColumn("Key", ImGuiTableColumnFlags_WidthFixed, 100.0f);
 		ImGui::TableSetupColumn("Target PC", ImGuiTableColumnFlags_WidthFixed, 70.0f);
 		ImGui::TableSetupColumn("Radar PC", ImGuiTableColumnFlags_WidthFixed, 70.0f);
+		ImGui::TableSetupColumn("Toggle", ImGuiTableColumnFlags_WidthFixed, 60.0f);
 		ImGui::TableHeadersRow();
 		
 		DMARefresh.RenderTableRow();
@@ -183,18 +184,19 @@ void Keybinds::OnDMAFrame(DMA_Connection* Conn)
 	if (DMARefresh.IsActive(Conn))
 		Conn->FullRefresh();
 
-	if (PlayerRefresh.IsActive(Conn))
+	if (PlayerRefresh.IsActive(Conn) && EFT::IsGameWorldInitialized())
 		EFT::GetRegisteredPlayers().FullUpdate(Conn);
 
-	if (Aimbot.IsActive(Conn))
+	if (Aimbot.IsActive(Conn, true))
 		Aimbot::OnDMAFrame(Conn);
 
 	if (FleaBot.IsActive(Conn))
 		FleaBot::bMasterToggle = !FleaBot::bMasterToggle;
 
-	if(OpticESP.IsActive(Conn))
+	if (OpticESP.IsActive(Conn))
 		DrawESPPlayers::bOpticESP = !DrawESPPlayers::bOpticESP;
 }
+
 
 void CKeybind::Render()
 {
@@ -279,15 +281,37 @@ void CKeybind::RenderTableRow()
 	ImGui::TableSetColumnIndex(3);
 	ImGui::SetCursorPosX(ImGui::GetCursorPosX() + 20.0f);
 	ImGui::Checkbox(("##Radar" + m_Name).c_str(), &m_bRadarPC);
+
+	// Toggle checkbox
+	ImGui::TableSetColumnIndex(4);
+	ImGui::SetCursorPosX(ImGui::GetCursorPosX() + 15.0f);
+	ImGui::Checkbox(("##Toggle" + m_Name).c_str(), &m_bToggle);
 }
 
-const bool CKeybind::IsActive(DMA_Connection* Conn)
+bool CKeybind::IsActive(DMA_Connection* Conn, bool bHoldMode)
 {
-	if (m_bTargetPC && c_keys::IsKeyDown(Conn, m_Key) & 0x1)
-		return true;
+	bool bTargetDown = m_bTargetPC && c_keys::IsKeyDown(Conn, m_Key);
+	bool bRadarDown = m_bRadarPC && (GetAsyncKeyState(m_Key) & 0x8000);
+	bool bIsDown = bTargetDown || bRadarDown;
 
-	if (m_bRadarPC && GetAsyncKeyState(m_Key) & 0x1)
-		return true;
+	if (m_bToggle)
+	{
+		if (bIsDown && m_bLastKeyStatus == false)
+			m_bState = !m_bState;
 
-	return false;
+		m_bLastKeyStatus = bIsDown;
+		return m_bState;
+	}
+
+	if (bHoldMode)
+	{
+		m_bState = bIsDown;
+		m_bLastKeyStatus = bIsDown;
+		return m_bState;
+	}
+
+	bool bActivated = bIsDown && m_bLastKeyStatus == false;
+	m_bLastKeyStatus = bIsDown;
+	m_bState = false;
+	return bActivated;
 }

@@ -8,25 +8,62 @@
 
 bool GOM::Initialize(DMA_Connection* Conn)
 {
-	auto& Proc = EFT::GetProcess();
+	try
+	{
+		ResetCache();
+		auto& Proc = EFT::GetProcess();
 
-	uintptr_t pGOMAddress = Proc.GetUnityAddress() + Offsets::pGOM;
-	GameObjectManagerAddress = Proc.ReadMem<uintptr_t>(Conn, pGOMAddress);
-	// std::println("GameObjectManager Address: 0x{:X}", GameObjectManagerAddress);
+		uintptr_t pGOMAddress = Proc.GetUnityAddress() + Offsets::pGOM;
+		GameObjectManagerAddress = Proc.ReadMem<uintptr_t>(Conn, pGOMAddress);
+		if (!GameObjectManagerAddress)
+		{
+			std::println("[EFT] GOM Address not found at 0x{:X}", pGOMAddress);
+			return false;
+		}
 
-	LastActiveNode = Proc.ReadMem<uintptr_t>(Conn, GameObjectManagerAddress + Offsets::CGameObjectManager::pLastActiveNode);
-	// std::println("LastActiveNode Address: 0x{:X}", LastActiveNode);
+		LastActiveNode = Proc.ReadMem<uintptr_t>(Conn, GameObjectManagerAddress + Offsets::CGameObjectManager::pLastActiveNode);
+		ActiveNodes = Proc.ReadMem<uintptr_t>(Conn, GameObjectManagerAddress + Offsets::CGameObjectManager::pActiveNodes);
 
-	ActiveNodes = Proc.ReadMem<uintptr_t>(Conn, GameObjectManagerAddress + Offsets::CGameObjectManager::pActiveNodes);
-	// std::println("ActiveNodes Address: 0x{:X}", ActiveNodes);
+		if (!ActiveNodes || !LastActiveNode)
+		{
+			std::println("[EFT] GOM Nodes pointers are null!");
+			return false;
+		}
 
+		GetObjectAddresses(Conn, 40000);
+		if (m_ObjectAddresses.empty())
+		{
+			std::println("[EFT] GOM scan returned no objects");
+			return false;
+		}
 
-	GetObjectAddresses(Conn, 40000);
+		PopulateObjectInfoListFromAddresses(Conn);
 
-	PopulateObjectInfoListFromAddresses(Conn);
-
-	return false;
+		return true;
+	}
+	catch (const std::exception& ex)
+	{
+		std::println("[EFT] GOM Initialize error: {}", ex.what());
+		ResetCache();
+		return false;
+	}
+	catch (...)
+	{
+		ResetCache();
+		return false;
+	}
 }
+
+void GOM::ResetCache()
+{
+	GameObjectManagerAddress = 0;
+	LastActiveNode = 0;
+	ActiveNodes = 0;
+	m_MainPlayerAddress = 0;
+	m_ObjectAddresses.clear();
+	m_ObjectInfo.clear();
+}
+
 
 void GOM::GetObjectAddresses(DMA_Connection* Conn, uint32_t MaxNodes)
 {
@@ -36,43 +73,26 @@ void GOM::GetObjectAddresses(DMA_Connection* Conn, uint32_t MaxNodes)
 
 	auto StartTime = std::chrono::high_resolution_clock::now();
 	uint32_t NodeCount = 0;
-	DWORD BytesRead = 0;
 	uintptr_t CurrentActiveNode = ActiveNodes;
 	uintptr_t FirstNode = ActiveNodes;
-
-	auto vmsh = VMMDLL_Scatter_Initialize(Conn->GetHandle(), EFT::GetProcess().GetPID(), 0);
 
 	// Track visited nodes to avoid duplicates when doing bidirectional traversal
 	std::unordered_set<uintptr_t> VisitedNodes;
 
 	// Forward traversal
 	uint32_t ForwardCount = 0;
-	while (true)
+	while (CurrentActiveNode != 0)
 	{
-		if (CurrentActiveNode == LastActiveNode && ForwardCount > 5)
-			break;
+		if (ForwardCount >= MaxNodes) break;
+		if (VisitedNodes.contains(CurrentActiveNode)) break;
 
-		if (ForwardCount >= MaxNodes)
-			break;
-
-		if (VisitedNodes.contains(CurrentActiveNode))
-			break;
-
-		CLinkedListEntry NodeEntry{};
-		VMMDLL_Scatter_PrepareEx(vmsh, CurrentActiveNode, sizeof(CLinkedListEntry), reinterpret_cast<BYTE*>(&NodeEntry), &BytesRead);
-		VMMDLL_Scatter_Execute(vmsh);
-		VMMDLL_Scatter_Clear(vmsh, Proc.GetPID(), 0);
-
-		if (BytesRead != sizeof(CLinkedListEntry))
-			break;
+		CLinkedListEntry NodeEntry = Proc.ReadMem<CLinkedListEntry>(Conn, CurrentActiveNode);
+		if (NodeEntry.pObject == 0) break;
 
 		VisitedNodes.insert(CurrentActiveNode);
 		m_ObjectAddresses.push_back(NodeEntry.pObject);
 
-		if (NodeEntry.pNextEntry == FirstNode)
-			break;
-
-		if (NodeEntry.pNextEntry == 0)
+		if (NodeEntry.pNextEntry == FirstNode || NodeEntry.pNextEntry == 0)
 			break;
 
 		CurrentActiveNode = NodeEntry.pNextEntry;
@@ -83,42 +103,22 @@ void GOM::GetObjectAddresses(DMA_Connection* Conn, uint32_t MaxNodes)
 	uint32_t BackwardCount = 0;
 	CurrentActiveNode = ActiveNodes;
 
-	// First, read the ActiveNodes entry to get its pPreviousEntry
-	CLinkedListEntry StartEntry{};
-	VMMDLL_Scatter_PrepareEx(vmsh, CurrentActiveNode, sizeof(CLinkedListEntry), reinterpret_cast<BYTE*>(&StartEntry), &BytesRead);
-	VMMDLL_Scatter_Execute(vmsh);
-	VMMDLL_Scatter_Clear(vmsh, Proc.GetPID(), 0);
-
-	if (BytesRead == sizeof(CLinkedListEntry) && StartEntry.pPreviousEntry != 0)
+	CLinkedListEntry StartEntry = Proc.ReadMem<CLinkedListEntry>(Conn, CurrentActiveNode);
+	if (StartEntry.pPreviousEntry != 0 && StartEntry.pPreviousEntry != FirstNode)
 	{
 		CurrentActiveNode = StartEntry.pPreviousEntry;
-
-		while (true)
+		while (CurrentActiveNode != 0)
 		{
-			if (BackwardCount >= MaxNodes)
-				break;
+			if (BackwardCount >= MaxNodes) break;
+			if (VisitedNodes.contains(CurrentActiveNode)) break;
 
-			if (VisitedNodes.contains(CurrentActiveNode))
-				break;
-
-			if (CurrentActiveNode == LastActiveNode && BackwardCount > 5)
-				break;
-
-			CLinkedListEntry NodeEntry{};
-			VMMDLL_Scatter_PrepareEx(vmsh, CurrentActiveNode, sizeof(CLinkedListEntry), reinterpret_cast<BYTE*>(&NodeEntry), &BytesRead);
-			VMMDLL_Scatter_Execute(vmsh);
-			VMMDLL_Scatter_Clear(vmsh, Proc.GetPID(), 0);
-
-			if (BytesRead != sizeof(CLinkedListEntry))
-				break;
+			CLinkedListEntry NodeEntry = Proc.ReadMem<CLinkedListEntry>(Conn, CurrentActiveNode);
+			if (NodeEntry.pObject == 0) break;
 
 			VisitedNodes.insert(CurrentActiveNode);
 			m_ObjectAddresses.push_back(NodeEntry.pObject);
 
-			if (NodeEntry.pPreviousEntry == FirstNode)
-				break;
-
-			if (NodeEntry.pPreviousEntry == 0)
+			if (NodeEntry.pPreviousEntry == FirstNode || NodeEntry.pPreviousEntry == 0)
 				break;
 
 			CurrentActiveNode = NodeEntry.pPreviousEntry;
@@ -126,12 +126,10 @@ void GOM::GetObjectAddresses(DMA_Connection* Conn, uint32_t MaxNodes)
 		}
 	}
 
-	NodeCount = ForwardCount + BackwardCount;
-	VMMDLL_Scatter_CloseHandle(vmsh);
-
+	NodeCount = (uint32_t)m_ObjectAddresses.size();
 	auto EndTime = std::chrono::high_resolution_clock::now();
 	auto Duration = std::chrono::duration_cast<std::chrono::milliseconds>(EndTime - StartTime).count();
-	// std::println("[EFT] UpdateObjectList; {} total nodes in {}ms", NodeCount, Duration);
+	std::println("[EFT] UpdateObjectList: scanned {} nodes in {}ms", NodeCount, Duration);
 }
 
 std::vector<uintptr_t> GOM::GetGameWorldAddresses(DMA_Connection* Conn)
@@ -153,25 +151,35 @@ std::vector<uintptr_t> GOM::GetGameWorldAddresses(DMA_Connection* Conn)
 uintptr_t GOM::FindGameWorldAddressFromCache(DMA_Connection* Conn)
 {
 	auto GameWorldAddrs = GetGameWorldAddresses(Conn);
+	if (GameWorldAddrs.empty())
+	{
+		throw std::runtime_error("No 'GameWorld' objects found in GOM scan.");
+	}
 
 	auto& Proc = EFT::GetProcess();
 
 	for (auto& GameWorldAddr : GameWorldAddrs)
 	{
 		auto Deref1 = Proc.ReadMem<uintptr_t>(Conn, GameWorldAddr + Offsets::CGameObject::pComponents);
+		if (!Deref1) continue;
+
 		auto Deref2 = Proc.ReadMem<uintptr_t>(Conn, Deref1 + 0x18);
+		if (!Deref2) continue;
+
 		auto LocalWorldAddr = Proc.ReadMem<uintptr_t>(Conn, Deref2 + Offsets::CComponent::pObjectClass);
+		if (!LocalWorldAddr) continue;
+
 		auto MainPlayerAddr = Proc.ReadMem<uintptr_t>(Conn, LocalWorldAddr + Offsets::CLocalGameWorld::pMainPlayer);
 
 		if (MainPlayerAddr)
 		{
 			m_MainPlayerAddress = MainPlayerAddr;
-			std::println("[EFT] LocalGameWorld Address: 0x{:X}\n", LocalWorldAddr);
+			std::println("[EFT] LocalGameWorld Address: 0x{:X}", LocalWorldAddr);
 			return LocalWorldAddr;
 		}
 	}
 
-	throw std::runtime_error("Failed to find valid LocalGameWorld address.");
+	throw std::runtime_error("Found 'GameWorld' object(s), but none have a valid MainPlayer (Player not in raid yet?)");
 }
 
 void GOM::DumpAllObjectsToFile(const std::string& FileName)

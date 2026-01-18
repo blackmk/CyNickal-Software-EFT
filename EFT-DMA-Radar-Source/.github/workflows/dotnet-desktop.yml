@@ -1,0 +1,168 @@
+name: Deploy to GitHub Releases
+
+on:
+  push:
+    branches:
+      - master
+    paths:
+      - 'version.json'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Build & Deploy
+    if: github.repository_owner == 'moulmandev' ## If you remove this change the Velopack packId from 'github.moulmandev.eft' below.
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+
+      - name: Get version info
+        uses: dotnet/nbgv@master
+        id: nbgv
+
+      - name: Setup .NET SDK
+        uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: |
+            8.0.x
+            9.0.x
+            10.0.x
+
+      - name: Install Velopack CLI
+        run: |
+          dotnet tool install -g vpk
+
+      - name: Dotnet Publish
+        run: |
+          dotnet publish src/Lone-EFT-DMA-Radar.csproj `
+            -c Release `
+            -r win-x64 `
+            --no-self-contained `
+            /p:PublishSingleFile=true `
+            /p:DebugType=none `
+            /p:Version=${{ steps.nbgv.outputs.SemVer2 }} `
+            /p:FileVersion=${{ steps.nbgv.outputs.AssemblyFileVersion }} `
+            /p:AssemblyVersion=${{ steps.nbgv.outputs.AssemblyVersion }} `
+            -o out
+
+      - name: Download previous release data
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          vpk download github `
+            --repoUrl "https://github.com/${{ github.repository }}" `
+            --token "$env:GITHUB_TOKEN"
+
+      - name: Pack with Velopack
+        run: |
+          vpk pack `
+            --packId github.moulmandev.eft `
+            --packVersion "${{ steps.nbgv.outputs.SemVer2 }}" `
+            --packDir "out" `
+            --mainExe "Moulman-EFT-DMA-Radar.exe" `
+            --packTitle "Moulman's EFT DMA Radar" `
+            --icon "Resources/lone-icon.ico"
+
+      - name: Upload to GitHub Releases
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          vpk upload github `
+            --repoUrl "https://github.com/${{ github.repository }}" `
+            --publish `
+            --releaseName "EFT ${{ steps.nbgv.outputs.SemVer2 }}" `
+            --tag "v${{ steps.nbgv.outputs.SemVer2 }}" `
+            --targetCommitish "${{ github.sha }}" `
+            --token "$env:GITHUB_TOKEN"
+
+      - name: Generate Changelog
+        id: changelog
+        shell: pwsh
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # Get the previous release tag
+          $previousTag = gh release list --limit 1 --json tagName --jq '.[0].tagName'
+
+          if ($previousTag) {
+            Write-Host "Previous tag: $previousTag"
+            # Check if the tag exists in git
+            $tagExists = git tag -l "$previousTag" 2>$null
+            if ($tagExists -and $LASTEXITCODE -eq 0) {
+              try {
+                # Get commits since last release
+                $commits = git log "$previousTag..HEAD" --pretty=format:"- %s (%h)%n" --no-merges 2>$null
+                if ($LASTEXITCODE -ne 0) {
+                  Write-Host "Failed to get commits since $previousTag, falling back to last 10 commits"
+                  $commits = git log -10 --pretty=format:"- %s (%h)%n" --no-merges
+                }
+              } catch {
+                Write-Host "Error getting commits since $previousTag, falling back to last 10 commits"
+                $commits = git log -10 --pretty=format:"- %s (%h)" --no-merges
+              }
+            } else {
+              Write-Host "Tag $previousTag not found in git, showing last 10 commits"
+              $commits = git log -10 --pretty=format:"- %s (%h)%n" --no-merges
+            }
+          } else {
+            Write-Host "No previous release found, showing last 10 commits"
+            # If no previous release, show last 10 commits
+            $commits = git log -10 --pretty=format:"- %s (%h)%n" --no-merges
+          }
+
+          if ([string]::IsNullOrWhiteSpace($commits)) {
+            $commits = "- ${{ github.event.head_commit.message }}"
+          }
+
+          # Escape quotes and newlines for JSON
+          $commits = $commits -replace '"', '\"' -replace "`r`n", "\n" -replace "`n", "\n"
+
+          # Set output - truncate if too long (Discord has a 1024 char limit per field)
+          if ($commits.Length -gt 900) {
+            $commits = $commits.Substring(0, 900) + "\n... (truncated)"
+          }
+
+          echo "CHANGELOG=$commits" >> $env:GITHUB_OUTPUT
+
+      - name: Send Discord Release Notification
+        shell: pwsh
+        env:
+          WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
+          REPO: ${{ github.repository }}
+          RELEASE_URL: https://github.com/${{ github.repository }}/releases/tag/v${{ steps.nbgv.outputs.SemVer2 }}
+          CHANGELOG: ${{ steps.changelog.outputs.CHANGELOG }}
+        run: |
+          $payload = @{
+            username = "GitHub Actions"
+            embeds = @(
+              @{
+                title = "🚀 New Release"
+                description = "**Version ${{ steps.nbgv.outputs.SemVer2 }}** is now available!"
+                color = 5763719
+                fields = @(
+                  @{
+                    name  = "🔗 Download Release"
+                    value = "[View on GitHub]($env:RELEASE_URL)"
+                  },
+                  @{
+                    name  = "📝 Changes"
+                    value = $env:CHANGELOG
+                  }
+                )
+                timestamp = (Get-Date -Format "o")
+              }
+            )
+          } | ConvertTo-Json -Depth 5
+          Invoke-RestMethod -Uri $env:WEBHOOK -Method Post -ContentType "application/json" -Body $payload

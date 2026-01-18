@@ -49,6 +49,8 @@ public:
 	const ImColor GetFuserColor() const;
 	const ImColor GetRadarColor() const;
 	const bool IsBoss() const;
+	const bool IsRaider() const;
+	const bool IsGuard() const;
 	const bool IsInvalid() const;
 	const Vector3& GetBonePosition(EBoneIndex boneIndex) const;
 	const bool IsLocalPlayer() const;

@@ -3,8 +3,11 @@
 #include "Game/EFT.h"
 #include "Game/Offsets/Offsets.h"
 #include "GUI/Fuser/Fuser.h"
+#include "Game/Classes/CRegisteredPlayers/CRegisteredPlayers.h"
+#include <algorithm>
 
 Matrix44 TransposeMatrix(const Matrix44& Mat)
+
 {
 	Matrix44 Result{};
 
@@ -53,13 +56,23 @@ bool CameraList::WorldToScreenEx(const Vector3 WorldPosition, Vector2& ScreenPos
 
 	if (OpticCamera)
 	{
-		float angleRadHalf = (std::numbers::pi / 180.f) * FPSCamera->GetFOV() * 0.5f;
+		float baseFov = (FPSCamera) ? FPSCamera->GetFOV() : 0.0f;
+		float baseAspect = (FPSCamera) ? FPSCamera->GetAspectRatio() : 0.0f;
+
+		if (baseFov <= 0.0f)
+			baseFov = OpticCamera->GetFOV();
+		if (baseAspect <= 0.0f)
+			baseAspect = OpticCamera->GetAspectRatio();
+
+		float angleRadHalf = (std::numbers::pi / 180.f) * baseFov * 0.5f;
 		float angleCtg = std::cos(angleRadHalf) / std::sin(angleRadHalf);
-		x /= angleCtg * FPSCamera->GetAspectRatio() * 0.5f;
+		x /= angleCtg * baseAspect * 0.5f;
 		y /= angleCtg * 0.5f;
 	}
 
+	
 	auto CenterScreen = Fuser::GetCenterScreen();
+
 	ScreenPosition.x = (CenterScreen.x) * (1.f + x / w);
 	ScreenPosition.y = (CenterScreen.y) * (1.f - y / w);
 
@@ -87,12 +100,13 @@ bool CameraList::W2S(const Vector3 WorldPosition, Vector2& ScreenPosition)
 	if (m_pFPSCamera == nullptr)
 		return false;
 
-	return WorldToScreenEx(WorldPosition, ScreenPosition, m_pFPSCamera);
+	CCamera* OpticCamera = (m_bScoped) ? GetSelectedOptic() : nullptr;
+	return WorldToScreenEx(WorldPosition, ScreenPosition, m_pFPSCamera, OpticCamera);
 }
 
 bool CameraList::OpticW2S(const Vector3 WorldPosition, Vector2& ScreenPosition)
 {
-	auto OpticCamera = GetSelectedOptic();
+	auto OpticCamera = (m_bScoped) ? GetSelectedOptic() : nullptr;
 	if (OpticCamera == nullptr || m_pFPSCamera == nullptr)
 		return false;
 
@@ -106,6 +120,12 @@ CCamera* CameraList::GetSelectedOptic()
 
 	return nullptr;
 }
+
+bool CameraList::IsScoped()
+{
+	return m_bScoped;
+}
+
 
 bool CameraList::CreateCameraCache(DMA_Connection* Conn, uintptr_t CameraHeadAddress, uint32_t NumCameras)
 {
@@ -134,9 +154,12 @@ bool CameraList::CreateCameraCache(DMA_Connection* Conn, uintptr_t CameraHeadAdd
 		std::println("[Camera] Failed to find FPS Camera in cache.");
 
 	m_pOpticCameras = GetPotentialOpticCameras();
+	UpdateOpticSelection();
+	UpdateOpticRadius();
 
 	return true;
 }
+
 
 CCamera* CameraList::SearchCameraCacheByName(const std::string& Name)
 {
@@ -155,12 +178,17 @@ std::vector<CCamera*> CameraList::GetPotentialOpticCameras()
 
 	for (auto& Entry : m_CameraCache)
 	{
-		if (Entry.GetName().find("OpticCamera") != std::string::npos)
+		auto Name = Entry.GetName();
+		bool bHasCamera = Name.find("Camera") != std::string::npos;
+		bool bLooksOptic = Name.find("Optic") != std::string::npos || Name.find("Clone") != std::string::npos;
+
+		if (bHasCamera && bLooksOptic)
 		{
-			std::println("[Camera] Found potential optic camera: {}", Entry.GetName());
+			std::println("[Camera] Found potential optic camera: {}", Name);
 			PotentialOptics.push_back(&Entry);
 		}
 	}
+
 
 	return PotentialOptics;
 }
@@ -205,11 +233,64 @@ CCamera* CameraList::FindWinningOptic(const std::vector<CCamera*>& PotentialOpti
 	return nullptr;
 }
 
+void CameraList::UpdateOpticSelection()
+{
+	auto pWinning = FindWinningOptic(m_pOpticCameras);
+	if (!pWinning)
+		return;
+
+	auto it = std::find(m_pOpticCameras.begin(), m_pOpticCameras.end(), pWinning);
+	if (it != m_pOpticCameras.end())
+	{
+		m_OpticIndex = static_cast<uint32_t>(std::distance(m_pOpticCameras.begin(), it));
+	}
+}
+
+void CameraList::UpdateOpticRadius()
+{
+	if (!m_bScoped)
+		return;
+
+	auto pOptic = GetSelectedOptic();
+	float minDim = std::min(Fuser::m_ScreenSize.x, Fuser::m_ScreenSize.y);
+	if (minDim <= 0.0f || pOptic == nullptr)
+		return;
+
+	float zoom = pOptic->GetZoom();
+
+	if (zoom < 0.01f)
+		zoom = 1.0f;
+
+	float radius = (minDim * 0.5f) / zoom;
+	radius = std::clamp(radius, 100.0f, minDim * 0.5f);
+
+	SetOpticRadius(radius);
+}
+
 void CameraList::QuickUpdateNecessaryCameras(DMA_Connection* Conn)
 {
-	auto vmsh = VMMDLL_Scatter_Initialize(Conn->GetHandle(), EFT::GetProcess().GetPID(), VMMDLL_FLAG_NOCACHE);
+	// Guard: GameWorld must be valid to access players
+	if (!EFT::IsGameWorldInitialized())
+		return;
 
-	auto pSelectedOptic = GetSelectedOptic();
+	auto pLocalPlayer = EFT::GetRegisteredPlayers().GetLocalPlayer();
+	bool bAiming = pLocalPlayer && pLocalPlayer->IsAiming();
+	m_bScoped = pLocalPlayer && pLocalPlayer->IsScoped();
+
+	if (!bAiming)
+	{
+		m_bScoped = false;
+	}
+
+	if (m_pOpticCameras.empty())
+		m_pOpticCameras = GetPotentialOpticCameras();
+
+	if (bAiming && !m_pOpticCameras.empty())
+		UpdateOpticSelection();
+
+	auto pSelectedOptic = (m_bScoped) ? GetSelectedOptic() : nullptr;
+
+	auto vmsh = VMMDLL_Scatter_Initialize(Conn->GetHandle(), EFT::GetProcess().GetPID(), VMMDLL_FLAG_NOCACHE);
 
 	if (m_pFPSCamera)
 		m_pFPSCamera->QuickRead(vmsh);
@@ -225,6 +306,8 @@ void CameraList::QuickUpdateNecessaryCameras(DMA_Connection* Conn)
 
 	if (pSelectedOptic)
 		pSelectedOptic->QuickFinalize();
+
+	UpdateOpticRadius();
 }
 
 /*

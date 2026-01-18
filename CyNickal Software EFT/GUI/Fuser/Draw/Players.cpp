@@ -6,6 +6,8 @@
 #include "Game/EFT.h"
 #include "../../ESP/ESPSettings.h"
 #include <imgui_internal.h>
+#include <mutex>
+
 
 // Forward declaration
 static void DrawTextAtPosition(ImDrawList* DrawList, const ImVec2& Position, const ImColor& Color, const std::string& Text);
@@ -40,6 +42,51 @@ void DrawESPPlayers::DrawBox(ImDrawList* drawList, ImVec2 min, ImVec2 max, ImCol
 		drawList->AddLine(max, ImVec2(max.x - sizeX, max.y), color, thickness);
 		drawList->AddLine(max, ImVec2(max.x, max.y - sizeY), color, thickness);
 	}
+}
+
+// Helper function to get health percentage and color from ETagStatus
+static std::pair<float, ImColor> GetHealthInfoFromTagStatus(uint32_t tagStatus)
+{
+	// Map discrete health states to approximate percentages
+	if (tagStatus & static_cast<uint32_t>(ETagStatus::Dying))
+		return { 0.15f, ImColor(255, 50, 50) };      // Red - critical
+	if (tagStatus & static_cast<uint32_t>(ETagStatus::BadlyInjured))
+		return { 0.40f, ImColor(255, 150, 50) };     // Orange - badly hurt
+	if (tagStatus & static_cast<uint32_t>(ETagStatus::Injured))
+		return { 0.70f, ImColor(200, 200, 50) };     // Yellow - hurt
+	// Default: Healthy / unknown
+	return { 1.0f, ImColor(50, 200, 50) };           // Green - full health
+}
+
+void DrawESPPlayers::DrawHealthBar(ImDrawList* DrawList, const ImVec2& bMin, const ImVec2& bMax, float healthPercent, const ImColor& healthColor)
+{
+	// Bar dimensions
+	float barWidth = 4.0f;
+	float barHeight = bMax.y - bMin.y;
+	float barX = bMax.x + 4.0f;  // Position to the right of the bounding box
+	
+	// Background (dark gray)
+	DrawList->AddRectFilled(
+		ImVec2(barX, bMin.y),
+		ImVec2(barX + barWidth, bMax.y),
+		ImColor(40, 40, 40, 200)
+	);
+	
+	// Health fill (from bottom up)
+	float fillHeight = barHeight * healthPercent;
+	DrawList->AddRectFilled(
+		ImVec2(barX, bMax.y - fillHeight),
+		ImVec2(barX + barWidth, bMax.y),
+		healthColor
+	);
+	
+	// Optional: border
+	DrawList->AddRect(
+		ImVec2(barX, bMin.y),
+		ImVec2(barX + barWidth, bMax.y),
+		ImColor(80, 80, 80, 255),
+		0.0f, 0, 1.0f
+	);
 }
 
 void DrawESPPlayers::DrawObservedPlayer(const CObservedPlayer& Player, const ImVec2& WindowPos, ImDrawList* DrawList, std::array<ProjectedBoneInfo, SKELETON_NUMBONES>& ProjectedBones, bool bForOptic)
@@ -89,7 +136,8 @@ void DrawESPPlayers::DrawObservedPlayer(const CObservedPlayer& Player, const ImV
 		DrawPlayerWeapon(Player.m_pHands.get(), WindowPos, DrawList, LineNumber, ProjectedBones);
 	}
 	if (bHealthEnabled) {
-		DrawObservedPlayerHealthText(Player, WindowPos, DrawList, Player.GetFuserColor(), LineNumber, ProjectedBones);
+		auto [healthPercent, healthColor] = GetHealthInfoFromTagStatus(Player.m_TagStatus);
+		DrawHealthBar(DrawList, bMin, bMax, healthPercent, healthColor);
 	}
 	if (bDistanceEnabled) {
 		std::string distText = std::format("[{:.0f}m]", Player.GetBonePosition(EBoneIndex::Root).DistanceTo(m_LatestLocalPlayerPos));
@@ -152,6 +200,11 @@ void DrawESPPlayers::DrawClientPlayer(const CClientPlayer& Player, const ImVec2&
 		DrawPlayerWeapon(Player.m_pHands.get(), WindowPos, DrawList, LineNumber, ProjectedBones);
 	}
 
+	if (bHealthEnabled) {
+		auto [healthPercent, healthColor] = GetHealthInfoFromTagStatus(0);
+		DrawHealthBar(DrawList, bMin, bMax, healthPercent, healthColor);
+	}
+
 	if (bDistanceEnabled) {
 		std::string distText = std::format("[{:.0f}m]", Player.GetBonePosition(EBoneIndex::Root).DistanceTo(m_LatestLocalPlayerPos));
 		DrawTextAtPosition(DrawList, ImVec2(WindowPos.x + ProjectedBones[Sketon_MyIndicies[EBoneIndex::Root]].ScreenPos.x, bMax.y + 5.0f), distanceColor, distText);
@@ -170,14 +223,15 @@ void DrawESPPlayers::DrawClientPlayer(const CClientPlayer& Player, const ImVec2&
 void DrawESPPlayers::DrawAll(const ImVec2& WindowPos, ImDrawList* DrawList)
 {
 	auto& PlayerList = EFT::GetRegisteredPlayers();
-	m_LatestLocalPlayerPos = PlayerList.GetLocalPlayerPosition();
 
-	std::scoped_lock lk(PlayerList.m_Mut);
+	std::scoped_lock PlayerLock(PlayerList.m_Mut);
 
 	auto LocalPlayer = PlayerList.GetLocalPlayer();
 	if (LocalPlayer == nullptr || LocalPlayer->IsInvalid()) return;
 
-	auto bDrawOpticESP = LocalPlayer->IsAiming(); // Redacted HeadDot re-purposing, will add OpticESP setting if needed
+	m_LatestLocalPlayerPos = LocalPlayer->GetBonePosition(EBoneIndex::Root);
+
+	auto bDrawOpticESP = DrawESPPlayers::bOpticESP && CameraList::IsScoped();
 	auto WindowSize = ImGui::GetWindowSize();
 	auto OpticFOV = CameraList::GetOpticRadius();
 
@@ -197,6 +251,7 @@ void DrawESPPlayers::DrawAll(const ImVec2& WindowPos, ImDrawList* DrawList)
 }
 
 void DrawTextAtPosition(ImDrawList* DrawList, const ImVec2& Position, const ImColor& Color, const std::string& Text)
+
 {
 	auto TextSize = ImGui::CalcTextSize(Text.c_str());
 	DrawList->AddText(
