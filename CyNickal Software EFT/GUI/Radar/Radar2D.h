@@ -2,7 +2,9 @@
 #include "GUI/Radar/EftMapConfig.h"
 #include "GUI/Radar/MapParams.h"
 #include "GUI/Radar/CoordTransform.h"
+#include "GUI/Radar/PlayerFocus.h"
 #include "Game/Classes/Vector.h"
+#include "Game/Classes/Quest/QuestLocation.h"
 #include <string>
 #include <vector>
 #include <unordered_map>
@@ -108,6 +110,7 @@ public:
 	static inline bool bShowMapImage = true;
 	static inline bool bAutoFloorSwitch = true;
 	static inline bool bAutoMap = true;
+	static inline bool bShowQuestMarkers = true;  // Phase 3: Quest markers
 	
 	// Zoom: 1-200, where 100 = 1:1, lower = zoomed in, higher = zoomed out
 	static inline int iZoom = 100;
@@ -121,6 +124,19 @@ public:
 	
 	// Current floor (for multi-level maps)
 	static inline int iCurrentFloor = 0;
+
+	// === Widget and Focus Settings (Phase 2) ===
+	static inline bool bShowGroupLines = true;       // Draw lines between group members
+	static inline bool bShowFocusHighlight = true;   // Highlight focused player
+	static inline bool bShowHoverTooltip = true;     // Show tooltip on hover
+	static inline float fMaxPlayerDistance = 500.0f; // Max distance for player rendering
+	static inline float fMaxLootDistance = 100.0f;   // Max distance for loot rendering
+
+	// Hover state (set during render)
+	static inline uintptr_t HoveredEntityAddr = 0;
+
+	// Render overlay widgets (call after main radar render)
+	static void RenderOverlayWidgets();
 
 private:
 	// Calculate map parameters for current frame
@@ -137,6 +153,8 @@ private:
 	                     const ImVec2& canvasMin, const ImVec2& canvasMax);
 	static void DrawExfils(ImDrawList* drawList, const MapParams& params,
 	                       const ImVec2& canvasMin, const ImVec2& canvasMax);
+	static void DrawQuestMarkers(ImDrawList* drawList, const MapParams& params,
+	                             const ImVec2& canvasMin, const ImVec2& canvasMax);
 	static void DrawLocalPlayer(ImDrawList* drawList, const MapParams& params, const ImVec2& canvasMin);
 	
 	// Handle input (zoom, pan)

@@ -27,6 +27,8 @@
 #include "Game/Camera List/Camera List.h"
 #include "DebugMode.h"
 #include "GUI/KmboxSettings/KmboxSettings.h"
+#include "GUI/LootFilter/LootFilter.h"
+#include "Game/Classes/Quest/CQuestManager.h"
 
 // ============================================================================
 // Logging helpers
@@ -832,62 +834,151 @@ static void RenderWorldESPContent()
 static void RenderRadarConfigContent()
 {
 	float panelWidth = ImGui::GetContentRegionAvail().x * 0.48f;
-	
-	ImGui::BeginChild("RadarLeft", ImVec2(panelWidth, 0), false);
+	float panelHeight = ImGui::GetContentRegionAvail().y * 0.45f;
+
+	// Top row - Radar settings
+	ImGui::BeginChild("RadarLeft", ImVec2(panelWidth, panelHeight), false);
 	{
 		BeginPanel("Radar Settings", "2D radar minimap");
-		
+
 		CustomToggle("Enable Radar", &Radar2D::bEnabled);
 		CustomToggle("Show Map Image", &Radar2D::bShowMapImage);
 		CustomToggle("Auto Map Selection", &Radar2D::bAutoMap);
 		CustomToggle("Auto Floor Switch", &Radar2D::bAutoFloorSwitch);
-		
+
 		ImGui::Spacing();
 		ImGui::Separator();
 		ImGui::Spacing();
-		
+
 		ImGui::Text("Display Options");
 		CustomToggle("Show Local Player", &Radar2D::bShowLocalPlayer);
 		CustomToggle("Show Players", &Radar2D::bShowPlayers);
 		CustomToggle("Show Loot", &Radar2D::bShowLoot);
 		CustomToggle("Show Exfils", &Radar2D::bShowExfils);
-		
+
 		EndPanel();
 	}
 	ImGui::EndChild();
-	
+
 	ImGui::SameLine();
-	
-	ImGui::BeginChild("RadarRight", ImVec2(0, 0), false);
+
+	ImGui::BeginChild("RadarRight", ImVec2(0, panelHeight), false);
 	{
 		BeginPanel("Radar Visuals", "Display settings");
-		
+
 		ImGui::Text("Zoom (1=close, 200=far)");
 		ImGui::SetNextItemWidth(180.0f);
 		ImGui::SliderInt("##Zoom", &Radar2D::iZoom, Radar2D::MIN_ZOOM, Radar2D::MAX_ZOOM);
-		
+
 		ImGui::Spacing();
 		ImGui::Separator();
 		ImGui::Spacing();
-		
+
 		ImGui::Text("Icon Sizes");
 		ImGui::Text("Player Icon");
 		CustomSlider("##PlayerIcon", &Radar2D::fPlayerIconSize, 2.0f, 20.0f, "%.1f px");
-		
+
 		ImGui::Text("Loot Icon");
 		CustomSlider("##LootIcon", &Radar2D::fLootIconSize, 1.0f, 15.0f, "%.1f px");
-		
+
 		ImGui::Text("Exfil Icon");
 		CustomSlider("##ExfilIcon", &Radar2D::fExfilIconSize, 4.0f, 25.0f, "%.1f px");
-		
+
 		ImGui::Spacing();
 		ImGui::Separator();
 		ImGui::Spacing();
-		
+
 		ImGui::Text("Current Floor");
 		ImGui::SetNextItemWidth(100.0f);
 		ImGui::InputInt("##Floor", &Radar2D::iCurrentFloor);
-		
+
+		EndPanel();
+	}
+	ImGui::EndChild();
+
+	// Bottom row - Loot Filter and Quest Helper (side by side)
+	float bottomPanelWidth = ImGui::GetContentRegionAvail().x * 0.5f;
+
+	ImGui::BeginChild("LootFilterSection", ImVec2(bottomPanelWidth, 0), false);
+	{
+		LootFilter::RenderSettings();
+	}
+	ImGui::EndChild();
+
+	ImGui::SameLine();
+
+	ImGui::BeginChild("QuestHelperSection", ImVec2(0, 0), false);
+	{
+		BeginPanel("Quest Helper", "Track quest objectives");
+
+		auto& questMgr = Quest::CQuestManager::GetInstance();
+		auto& settings = questMgr.GetSettings();
+
+		CustomToggle("Enable Quest Helper", &settings.bEnabled);
+
+		if (settings.bEnabled)
+		{
+			ImGui::Spacing();
+			CustomToggle("Show Quest Locations", &settings.bShowQuestLocations);
+			CustomToggle("Highlight Quest Items", &settings.bHighlightQuestItems);
+			CustomToggle("Show Quest Panel", &settings.bShowQuestPanel);
+
+			ImGui::Spacing();
+			ImGui::Separator();
+			ImGui::Spacing();
+
+			ImGui::Text("Quest Marker Size");
+			CustomSlider("##QuestMarkerSize", &settings.fQuestMarkerSize, 4.0f, 20.0f, "%.1f px");
+
+			ImGui::Spacing();
+
+			// Quest location color picker
+			float qCol[4] = { settings.QuestLocationColor.x, settings.QuestLocationColor.y,
+			                  settings.QuestLocationColor.z, settings.QuestLocationColor.w };
+			ImGui::Text("Quest Marker Color");
+			if (ImGui::ColorEdit4("##QuestColor", qCol, ImGuiColorEditFlags_NoInputs))
+			{
+				settings.QuestLocationColor = ImVec4(qCol[0], qCol[1], qCol[2], qCol[3]);
+			}
+
+			ImGui::Spacing();
+			ImGui::Separator();
+			ImGui::Spacing();
+
+			// Active quests list
+			std::scoped_lock lk(questMgr.GetMutex());
+			const auto& activeQuests = questMgr.GetActiveQuests();
+
+			ImGui::Text("Active Quests: %zu", activeQuests.size());
+
+			if (!activeQuests.empty())
+			{
+				ImGui::BeginChild("QuestList", ImVec2(0, 150), true);
+				for (const auto& [questId, quest] : activeQuests)
+				{
+					bool enabled = quest.bIsEnabled;
+					if (ImGui::Checkbox(("##qe_" + questId).c_str(), &enabled))
+					{
+						questMgr.SetQuestEnabled(questId, enabled);
+					}
+					ImGui::SameLine();
+					ImGui::Text("%s", quest.Name.c_str());
+				}
+				ImGui::EndChild();
+			}
+			else
+			{
+				ImGui::TextColored(ImVec4(0.5f, 0.5f, 0.5f, 1.0f), "No active quests detected.");
+				ImGui::TextColored(ImVec4(0.5f, 0.5f, 0.5f, 1.0f), "Quests appear when in raid.");
+			}
+
+			ImGui::Spacing();
+
+			// Quest locations count
+			const auto& questLocs = questMgr.GetQuestLocations();
+			ImGui::Text("Quest Markers on Map: %zu", questLocs.size());
+		}
+
 		EndPanel();
 	}
 	ImGui::EndChild();

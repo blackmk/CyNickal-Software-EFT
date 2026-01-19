@@ -16,6 +16,10 @@
 #include "Game/Camera List/Camera List.h"
 #include "GUI/Player Table/Player Table.h"
 #include "GUI/Item Table/Item Table.h"
+#include "GUI/LootFilter/LootFilter.h"
+#include "GUI/Radar/Widgets/WidgetManager.h"
+#include "GUI/Radar/PlayerFocus.h"
+#include "Game/Classes/Quest/CQuestManager.h"
 
 #include <shlobj.h>
 #include <fstream>
@@ -279,11 +283,62 @@ json Config::SerializeConfig() {
 		{"bShowMapImage", Radar2D::bShowMapImage},
 		{"bAutoFloorSwitch", Radar2D::bAutoFloorSwitch},
 		{"bAutoMap", Radar2D::bAutoMap},
+		{"bShowQuestMarkers", Radar2D::bShowQuestMarkers},
 		{"iZoom", Radar2D::iZoom},
 		{"fPlayerIconSize", Radar2D::fPlayerIconSize},
 		{"fLootIconSize", Radar2D::fLootIconSize},
 		{"fExfilIconSize", Radar2D::fExfilIconSize},
-		{"iCurrentFloor", Radar2D::iCurrentFloor}
+		{"iCurrentFloor", Radar2D::iCurrentFloor},
+		// Phase 2 settings
+		{"bShowGroupLines", Radar2D::bShowGroupLines},
+		{"bShowFocusHighlight", Radar2D::bShowFocusHighlight},
+		{"bShowHoverTooltip", Radar2D::bShowHoverTooltip},
+		{"fMaxPlayerDistance", Radar2D::fMaxPlayerDistance},
+		{"fMaxLootDistance", Radar2D::fMaxLootDistance}
+	};
+
+	// Serialize Quest Helper settings (Phase 3)
+	{
+		auto& questMgr = Quest::CQuestManager::GetInstance();
+		const auto& settings = questMgr.GetSettings();
+
+		// Convert blacklisted quests set to JSON array
+		json blacklistedJson = json::array();
+		for (const auto& questId : settings.BlacklistedQuests)
+		{
+			blacklistedJson.push_back(questId);
+		}
+
+		j["QuestHelper"] = {
+			{"bEnabled", settings.bEnabled},
+			{"bShowQuestLocations", settings.bShowQuestLocations},
+			{"bHighlightQuestItems", settings.bHighlightQuestItems},
+			{"bShowQuestPanel", settings.bShowQuestPanel},
+			{"fQuestMarkerSize", settings.fQuestMarkerSize},
+			{"QuestLocationColor", {
+				settings.QuestLocationColor.x,
+				settings.QuestLocationColor.y,
+				settings.QuestLocationColor.z,
+				settings.QuestLocationColor.w
+			}},
+			{"QuestItemColor", {
+				settings.QuestItemColor.x,
+				settings.QuestItemColor.y,
+				settings.QuestItemColor.z,
+				settings.QuestItemColor.w
+			}},
+			{"BlacklistedQuests", blacklistedJson}
+		};
+	}
+
+	// Serialize widgets
+	j["Widgets"] = WidgetManager::SerializeWidgets();
+
+	// Serialize PlayerFocus settings
+	j["PlayerFocus"] = {
+		{"FocusHighlightColor", PlayerFocus::FocusHighlightColor},
+		{"TempTeammateColor", PlayerFocus::TempTeammateColor},
+		{"GroupLineColor", PlayerFocus::GroupLineColor}
 	};
 
 
@@ -361,6 +416,54 @@ json Config::SerializeConfig() {
 		{"CycleDelayMs", FleaBot::CycleDelay.count()},
 		{"SuperCycleDelayMs", FleaBot::SuperCycleDelay.count()}
 	};
+
+	// Serialize LootFilter settings
+	{
+		// Serialize filter presets
+		json presetsJson = json::object();
+		for (const auto& [presetName, filter] : LootFilter::FilterPresets)
+		{
+			json entriesJson = json::array();
+			for (const auto& entry : filter.entries)
+			{
+				entriesJson.push_back({
+					{"itemId", entry.itemId},
+					{"itemName", entry.itemName},
+					{"type", static_cast<int>(entry.type)},
+					{"enabled", entry.enabled},
+					{"customColor", entry.customColor},
+					{"comment", entry.comment}
+				});
+			}
+			presetsJson[presetName] = {
+				{"name", filter.name},
+				{"defaultImportantColor", filter.defaultImportantColor},
+				{"entries", entriesJson}
+			};
+		}
+
+		j["LootFilter"] = {
+			{"SelectedFilter", LootFilter::SelectedFilterName},
+			{"SearchString", LootFilter::SearchString},
+			{"ShowMeds", LootFilter::ShowMeds},
+			{"ShowFood", LootFilter::ShowFood},
+			{"ShowBackpacks", LootFilter::ShowBackpacks},
+			{"ShowKeys", LootFilter::ShowKeys},
+			{"ShowBarter", LootFilter::ShowBarter},
+			{"ShowWeapons", LootFilter::ShowWeapons},
+			{"ShowAmmo", LootFilter::ShowAmmo},
+			{"ShowAll", LootFilter::ShowAll},
+			{"MinValueRegular", LootFilter::MinValueRegular},
+			{"MinValueValuable", LootFilter::MinValueValuable},
+			{"PricePerSlot", LootFilter::PricePerSlot},
+			{"UseFleaPrice", LootFilter::UseFleaPrice},
+			{"MinPrice", LootFilter::MinPrice},
+			{"MaxPrice", LootFilter::MaxPrice},
+			{"ShowQuestItems", LootFilter::ShowQuestItems},
+			{"HighlightQuestItems", LootFilter::HighlightQuestItems},
+			{"FilterPresets", presetsJson}
+		};
+	}
 
 	SerializeKeybinds(j);
 
@@ -596,11 +699,61 @@ void Config::DeserializeConfig(const json& j) {
 		if (r2d.contains("bShowMapImage")) Radar2D::bShowMapImage = r2d["bShowMapImage"].get<bool>();
 		if (r2d.contains("bAutoFloorSwitch")) Radar2D::bAutoFloorSwitch = r2d["bAutoFloorSwitch"].get<bool>();
 		if (r2d.contains("bAutoMap")) Radar2D::bAutoMap = r2d["bAutoMap"].get<bool>();
+		if (r2d.contains("bShowQuestMarkers")) Radar2D::bShowQuestMarkers = r2d["bShowQuestMarkers"].get<bool>();
 		if (r2d.contains("iZoom")) Radar2D::iZoom = r2d["iZoom"].get<int>();
 		if (r2d.contains("fPlayerIconSize")) Radar2D::fPlayerIconSize = r2d["fPlayerIconSize"].get<float>();
 		if (r2d.contains("fLootIconSize")) Radar2D::fLootIconSize = r2d["fLootIconSize"].get<float>();
 		if (r2d.contains("fExfilIconSize")) Radar2D::fExfilIconSize = r2d["fExfilIconSize"].get<float>();
 		if (r2d.contains("iCurrentFloor")) Radar2D::iCurrentFloor = r2d["iCurrentFloor"].get<int>();
+		// Phase 2 settings
+		if (r2d.contains("bShowGroupLines")) Radar2D::bShowGroupLines = r2d["bShowGroupLines"].get<bool>();
+		if (r2d.contains("bShowFocusHighlight")) Radar2D::bShowFocusHighlight = r2d["bShowFocusHighlight"].get<bool>();
+		if (r2d.contains("bShowHoverTooltip")) Radar2D::bShowHoverTooltip = r2d["bShowHoverTooltip"].get<bool>();
+		if (r2d.contains("fMaxPlayerDistance")) Radar2D::fMaxPlayerDistance = r2d["fMaxPlayerDistance"].get<float>();
+		if (r2d.contains("fMaxLootDistance")) Radar2D::fMaxLootDistance = r2d["fMaxLootDistance"].get<float>();
+	}
+
+	// Deserialize Quest Helper settings (Phase 3)
+	if (j.contains("QuestHelper")) {
+		const auto& qh = j["QuestHelper"];
+		auto& questMgr = Quest::CQuestManager::GetInstance();
+		auto& settings = questMgr.GetSettings();
+
+		if (qh.contains("bEnabled")) settings.bEnabled = qh["bEnabled"].get<bool>();
+		if (qh.contains("bShowQuestLocations")) settings.bShowQuestLocations = qh["bShowQuestLocations"].get<bool>();
+		if (qh.contains("bHighlightQuestItems")) settings.bHighlightQuestItems = qh["bHighlightQuestItems"].get<bool>();
+		if (qh.contains("bShowQuestPanel")) settings.bShowQuestPanel = qh["bShowQuestPanel"].get<bool>();
+		if (qh.contains("fQuestMarkerSize")) settings.fQuestMarkerSize = qh["fQuestMarkerSize"].get<float>();
+
+		if (qh.contains("QuestLocationColor") && qh["QuestLocationColor"].is_array() && qh["QuestLocationColor"].size() == 4) {
+			const auto& col = qh["QuestLocationColor"];
+			settings.QuestLocationColor = ImVec4(col[0].get<float>(), col[1].get<float>(), col[2].get<float>(), col[3].get<float>());
+		}
+
+		if (qh.contains("QuestItemColor") && qh["QuestItemColor"].is_array() && qh["QuestItemColor"].size() == 4) {
+			const auto& col = qh["QuestItemColor"];
+			settings.QuestItemColor = ImVec4(col[0].get<float>(), col[1].get<float>(), col[2].get<float>(), col[3].get<float>());
+		}
+
+		if (qh.contains("BlacklistedQuests") && qh["BlacklistedQuests"].is_array()) {
+			settings.BlacklistedQuests.clear();
+			for (const auto& questId : qh["BlacklistedQuests"]) {
+				settings.BlacklistedQuests.insert(questId.get<std::string>());
+			}
+		}
+	}
+
+	// Deserialize widgets
+	if (j.contains("Widgets")) {
+		WidgetManager::DeserializeWidgets(j["Widgets"]);
+	}
+
+	// Deserialize PlayerFocus settings
+	if (j.contains("PlayerFocus")) {
+		const auto& pf = j["PlayerFocus"];
+		if (pf.contains("FocusHighlightColor")) PlayerFocus::FocusHighlightColor = pf["FocusHighlightColor"].get<ImU32>();
+		if (pf.contains("TempTeammateColor")) PlayerFocus::TempTeammateColor = pf["TempTeammateColor"].get<ImU32>();
+		if (pf.contains("GroupLineColor")) PlayerFocus::GroupLineColor = pf["GroupLineColor"].get<ImU32>();
 	}
 
 	if (j.contains("Colors")) {
@@ -725,6 +878,61 @@ void Config::DeserializeConfig(const json& j) {
 		if (fb.contains("TimeoutMs")) FleaBot::TimeoutDuration = std::chrono::milliseconds(fb["TimeoutMs"].get<int64_t>());
 		if (fb.contains("CycleDelayMs")) FleaBot::CycleDelay = std::chrono::milliseconds(fb["CycleDelayMs"].get<int64_t>());
 		if (fb.contains("SuperCycleDelayMs")) FleaBot::SuperCycleDelay = std::chrono::milliseconds(fb["SuperCycleDelayMs"].get<int64_t>());
+	}
+
+	// Deserialize LootFilter settings
+	if (j.contains("LootFilter")) {
+		const auto& lf = j["LootFilter"];
+		if (lf.contains("SelectedFilter")) LootFilter::SelectedFilterName = lf["SelectedFilter"].get<std::string>();
+		if (lf.contains("SearchString")) LootFilter::SearchString = lf["SearchString"].get<std::string>();
+		if (lf.contains("ShowMeds")) LootFilter::ShowMeds = lf["ShowMeds"].get<bool>();
+		if (lf.contains("ShowFood")) LootFilter::ShowFood = lf["ShowFood"].get<bool>();
+		if (lf.contains("ShowBackpacks")) LootFilter::ShowBackpacks = lf["ShowBackpacks"].get<bool>();
+		if (lf.contains("ShowKeys")) LootFilter::ShowKeys = lf["ShowKeys"].get<bool>();
+		if (lf.contains("ShowBarter")) LootFilter::ShowBarter = lf["ShowBarter"].get<bool>();
+		if (lf.contains("ShowWeapons")) LootFilter::ShowWeapons = lf["ShowWeapons"].get<bool>();
+		if (lf.contains("ShowAmmo")) LootFilter::ShowAmmo = lf["ShowAmmo"].get<bool>();
+		if (lf.contains("ShowAll")) LootFilter::ShowAll = lf["ShowAll"].get<bool>();
+		if (lf.contains("MinValueRegular")) LootFilter::MinValueRegular = lf["MinValueRegular"].get<int32_t>();
+		if (lf.contains("MinValueValuable")) LootFilter::MinValueValuable = lf["MinValueValuable"].get<int32_t>();
+		if (lf.contains("PricePerSlot")) LootFilter::PricePerSlot = lf["PricePerSlot"].get<bool>();
+		if (lf.contains("UseFleaPrice")) LootFilter::UseFleaPrice = lf["UseFleaPrice"].get<bool>();
+		if (lf.contains("MinPrice")) LootFilter::MinPrice = lf["MinPrice"].get<int32_t>();
+		if (lf.contains("MaxPrice")) LootFilter::MaxPrice = lf["MaxPrice"].get<int32_t>();
+		if (lf.contains("ShowQuestItems")) LootFilter::ShowQuestItems = lf["ShowQuestItems"].get<bool>();
+		if (lf.contains("HighlightQuestItems")) LootFilter::HighlightQuestItems = lf["HighlightQuestItems"].get<bool>();
+
+		// Deserialize filter presets
+		if (lf.contains("FilterPresets")) {
+			LootFilter::FilterPresets.clear();
+			const auto& presets = lf["FilterPresets"];
+			for (auto it = presets.begin(); it != presets.end(); ++it) {
+				const std::string presetName = it.key();
+				const auto& presetData = it.value();
+
+				UserLootFilter filter(presetName);
+				if (presetData.contains("defaultImportantColor"))
+					filter.defaultImportantColor = presetData["defaultImportantColor"].get<ImU32>();
+
+				if (presetData.contains("entries") && presetData["entries"].is_array()) {
+					for (const auto& entryJson : presetData["entries"]) {
+						LootFilterEntry entry;
+						if (entryJson.contains("itemId")) entry.itemId = entryJson["itemId"].get<std::string>();
+						if (entryJson.contains("itemName")) entry.itemName = entryJson["itemName"].get<std::string>();
+						if (entryJson.contains("type")) entry.type = static_cast<LootFilterEntryType>(entryJson["type"].get<int>());
+						if (entryJson.contains("enabled")) entry.enabled = entryJson["enabled"].get<bool>();
+						if (entryJson.contains("customColor")) entry.customColor = entryJson["customColor"].get<ImU32>();
+						if (entryJson.contains("comment")) entry.comment = entryJson["comment"].get<std::string>();
+						filter.entries.push_back(entry);
+					}
+				}
+
+				LootFilter::FilterPresets[presetName] = std::move(filter);
+			}
+		}
+
+		// Ensure default filter exists
+		LootFilter::EnsureDefaultFilter();
 	}
 
 	if (j.contains("Keybinds")) {

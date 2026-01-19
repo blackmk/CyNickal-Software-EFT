@@ -11,6 +11,19 @@ This is a **fork** of the original CyNickal project with custom modifications.
 | `origin` | `github.com/blackmk/CyNickal-Software-EFT` | Your fork (push here) |
 | `upstream` | `github.com/CyN1ckal/CyNickal-Software-EFT` | Original project |
 
+## Inspiration Projects
+
+Reference projects for feature ideas. See individual files in `Inspiration/` folder.
+
+| Project | File | Key Features |
+|---------|------|--------------|
+| Lum0s-EFT-DMA-Radar | `Inspiration/Lum0s-EFT-DMA-Radar.md` | MemoryAim, NoRecoil, ESP overlay |
+
+When implementing features from inspiration projects:
+1. Read the corresponding MD file for project structure
+2. Note that most are C# - adapt patterns to C++
+3. Follow existing CyNickal coding conventions
+
 ## Git Workflow
 
 ### Branching Strategy

@@ -6,6 +6,223 @@ This document tracks changes made to the codebase by AI agents and developers. P
 
 <!-- Add new entries below this line -->
 
+## [Date: 2026-01-19] - Phase 3: Quest System (Lum0s-Inspired)
+
+**Agent:** Claude Code
+**Focus:** C++
+
+### Changes
+- **Modified:** `Game/Offsets/Offsets.h` - Added quest-related offsets:
+  - `CProfile::pQuestsData` (0x98)
+  - `CQuestsData::pId`, `Status`, `pCompletedConditions`
+- **Created:** `Game/Classes/Quest/QuestObjectiveType.h` - Quest objective type enum with:
+  - 18 objective types (Visit, Mark, FindItem, GiveItem, Plant, etc.)
+  - EQuestStatus enum for quest state tracking
+  - String conversion helpers
+- **Created:** `Game/Classes/Quest/QuestEntry.h` - Active quest entry struct with:
+  - Quest ID and display name
+  - User toggle for enabling/disabling
+- **Created:** `Game/Classes/Quest/QuestLocation.h` - Quest marker struct with:
+  - Quest/objective/zone IDs
+  - Objective type and world position
+  - Unique key generation
+- **Created:** `Game/Classes/Quest/QuestData.h/cpp` - Quest database system with:
+  - TaskDefinition, TaskObjective, TaskZone structs
+  - QuestDatabase singleton for loading tarkov.dev JSON format
+  - Zone index by map for location lookups
+  - Quest item ID tracking
+- **Created:** `Game/Classes/Quest/CQuestManager.h/cpp` - Main quest manager with:
+  - QuestSettings (enable flags, colors, marker size)
+  - Memory reading for active quests from player profile
+  - Quest item tracking for loot highlighting
+  - Quest location markers by current map
+  - Refresh throttling (1 second)
+- **Modified:** `GUI/LootFilter/LootFilter.cpp` - Integrated IsQuestItem():
+  - Checks CQuestManager for dynamic quest items
+  - Falls back to ItemDatabase for static quest item flag
+- **Modified:** `GUI/Radar/Radar2D.h` - Added:
+  - `bShowQuestMarkers` toggle
+  - `DrawQuestMarkers()` declaration
+  - QuestLocation include
+- **Modified:** `GUI/Radar/Radar2D.cpp` - Added:
+  - `DrawQuestMarkers()` implementation with star markers
+  - Quest name/distance labels with background
+  - Height indicators (above/below arrows)
+  - Integration in both Render() and RenderEmbedded()
+  - Checkbox in RenderSettings()
+- **Modified:** `GUI/Main Menu/Main Menu.cpp` - Added Quest Helper panel with:
+  - Master toggle for quest helper
+  - Show locations/highlight items toggles
+  - Quest marker size slider
+  - Color picker for quest markers
+  - Active quest list with individual toggles
+- **Modified:** `GUI/Config/Config.cpp` - Added serialization for:
+  - All quest settings (enabled, colors, sizes)
+  - Blacklisted quests (user-disabled)
+  - bShowQuestMarkers for Radar2D
+- **Modified:** `CyNickal Software EFT.vcxproj` - Added quest files to project
+
+### Features
+- **Quest Memory Reading:** Reads active quests from player profile, tracks status
+- **Quest Item Highlighting:** Purple markers for quest items in loot
+- **Quest Location Markers:** Star-shaped markers on radar for objectives
+- **Quest Panel UI:** Toggle quests on/off, configure colors and sizes
+- **Config Persistence:** All quest settings saved and loaded
+
+### Verification
+- [x] Code implementation complete
+- [x] Files added to vcxproj
+- [ ] Build succeeded (requires user to run build.bat)
+- [ ] Verified in-game
+
+---
+
+## [Date: 2026-01-18] - Phase 2: Radar Display + Widgets (Lum0s-Inspired)
+
+**Agent:** Claude Code
+**Focus:** C++
+
+### Changes
+- **Created:** `GUI/Radar/PlayerFocus.h` - Player focus and temporary teammate tracking system with:
+  - Focus state cycling (None -> Focused -> TempTeammate -> None)
+  - Temp teammate set for marking friendlies
+  - Configurable highlight and group line colors
+- **Created:** `GUI/Radar/Widgets/RadarWidget.h` - Base class for draggable/resizable overlay widgets with:
+  - Position, size, visibility, and minimized state
+  - Common frame rendering with title bar
+  - JSON serialization/deserialization
+- **Created:** `GUI/Radar/Widgets/PlayerInfoWidget.h/cpp` - Player list widget showing:
+  - Player name, weapon, health status, distance
+  - Color-coded by player type (PMC, Scav, Boss, etc.)
+  - Click to focus/cycle focus state
+  - Sortable by distance
+- **Created:** `GUI/Radar/Widgets/LootInfoWidget.h/cpp` - Top loot widget showing:
+  - Valuable items sorted by price or distance
+  - Item name, price, distance columns
+  - Click to highlight on radar (pulsing effect)
+  - Configurable max display count
+- **Created:** `GUI/Radar/Widgets/AimviewWidget.h/cpp` - 3D perspective widget showing:
+  - Players relative to local player's view direction
+  - Distance-based dot sizing (closer = bigger)
+  - Crosshair and distance circles
+  - FOV-based projection
+- **Created:** `GUI/Radar/Widgets/WidgetManager.h` - Central widget manager with:
+  - Widget visibility toggles
+  - Settings UI for all widgets
+  - Serialization/deserialization for widget states
+- **Modified:** `GUI/Radar/Radar2D.h` - Added Phase 2 settings:
+  - bShowGroupLines, bShowFocusHighlight, bShowHoverTooltip
+  - fMaxPlayerDistance, fMaxLootDistance
+  - HoveredEntityAddr for tooltip tracking
+  - RenderOverlayWidgets() declaration
+- **Modified:** `GUI/Radar/Radar2D.cpp` - Added:
+  - RenderOverlayWidgets() implementation
+  - WidgetManager and PlayerFocus settings in RenderSettings()
+  - Fixed duplicate pch.h include
+- **Modified:** `GUI/Config/Config.cpp` - Added serialization/deserialization for:
+  - All Phase 2 radar settings
+  - Widget states and positions
+  - PlayerFocus colors
+- **Modified:** `CyNickal Software EFT.vcxproj` - Added new source and header files to project
+
+### Features
+- **Player Focus System:** Click players to focus/track them, cycle through focus states
+- **Temporary Teammates:** Mark players as friendly (hidden from aimview, different rendering)
+- **PlayerInfoWidget:** Sortable player list with weapon/health/distance info
+- **LootInfoWidget:** Top valuable loot list with click-to-highlight
+- **AimviewWidget:** 3D perspective radar showing what's in front of you
+- **Widget Framework:** Draggable, resizable, minimizable overlay widgets
+- **Config Persistence:** All widget positions and settings saved
+
+### Verification
+- [x] Build succeeded (0 errors, warnings only)
+- [x] Patch note recorded
+- [ ] Verified in-game
+
+---
+
+## [Date: 2026-01-18] - Phase 1: Enhanced Loot Filtering System (Lum0s-Inspired)
+
+**Agent:** Claude Code
+**Focus:** C++
+
+### Changes
+- **Created:** `GUI/LootFilter/LootFilterEntry.h` - Per-item filter entry struct with item ID, name, type (important/blacklisted), custom color, and enabled toggle
+- **Created:** `GUI/LootFilter/UserLootFilter.h` - Named filter preset collection with helper methods for managing important and blacklisted items
+- **Modified:** `GUI/LootFilter/LootFilter.h` - Complete overhaul with:
+  - Dual-tier pricing system (`MinValueRegular`, `MinValueValuable`)
+  - Price-per-slot calculation option
+  - Named filter presets management
+  - Quest item integration placeholders (Phase 3)
+  - Enhanced filtering checks (IsImportant, IsBlacklisted, IsValuable, IsQuestItem)
+- **Modified:** `GUI/LootFilter/LootFilter.cpp` - Implemented:
+  - Filter preset management (create/delete/rename)
+  - Important and blacklist item management
+  - Enhanced color system with priority order (Quest > Important > Valuable > Price tiers)
+  - Item search UI for adding items by name
+  - Full UI with preset selector, important items table, blacklist table
+- **Modified:** `GUI/Config/Config.cpp` - Added full serialization/deserialization for:
+  - All loot filter settings (categories, price thresholds, toggles)
+  - Filter presets with entries (item lists persist across sessions)
+- **Modified:** `GUI/Main Menu/Main Menu.cpp` - Integrated loot filter UI into Radar Config panel
+
+### Features
+- **Dual-tier pricing:** Regular threshold (default 20k) and Valuable threshold (default 100k) for better loot highlighting
+- **Price-per-slot:** Optional normalization by inventory size for comparing item value efficiency
+- **Named filter presets:** Create, rename, delete custom filter presets (default preset protected)
+- **Important items list:** Mark specific items to always highlight with custom colors
+- **Blacklist:** Mark items to hide completely from radar/ESP
+- **Item search:** Search database to add items to important/blacklist by name
+- **Quest item support:** Infrastructure ready for Phase 3 quest system integration
+- **Config persistence:** All settings and filter presets saved to config files
+
+### Color Priority System
+1. Quest Items -> Purple (when enabled)
+2. Important (user-marked) -> Turquoise or custom color
+3. Blacklisted -> Hidden (not rendered)
+4. Valuable (>MinValueValuable) -> Gold
+5. High Value -> Purple
+6. Medium Value -> Blue
+7. Low Value -> Green
+8. Normal -> White
+9. Below Threshold -> Gray
+
+### Verification
+- [x] Build succeeded (0 errors)
+- [x] Patch note recorded
+- [ ] Verified in-game
+
+---
+
+## [Date: 2026-01-18] - Fixed Random Bone State Desync
+
+**Agent:** Claude Code
+**Focus:** C++
+
+### Changes
+- **Fixed:** Random bone feature breaking after some shots and stopping to lock correctly
+- **Root Cause:** Three bugs in `GUI/Aimbot/Aimbot.cpp` caused state desync:
+  1. **Dual initialization paths** - `GetTargetBoneIndex()` had redundant initialization that didn't update `s_LastRandomAmmoCount`, causing state desync when `pFirearm` was temporarily invalid
+  2. **Partial state reset** - When player/firearm was invalid, only `bRandomBoneInitialized` was reset, leaving stale `s_LastRandomHandsController` and `s_LastRandomAmmoCount` values
+  3. **Unreliable ammo count** - Zero or garbage ammo reads could trigger spurious shot detection (e.g., 25 bone re-rolls in one frame)
+- **Fix 1:** Removed duplicate initialization from `GetTargetBoneIndex()` - now just returns `s_CurrentRandomBone` since `UpdateRandomBoneState()` handles all initialization
+- **Fix 2:** Full state reset (all 3 variables) when player or firearm becomes invalid
+- **Fix 3:** Added ammo validation (ignore 0 or >200) and max shots-per-frame limit (cap at 10, default to 1 if exceeded)
+
+### Technical Details
+The bug manifested when:
+1. `pFirearm` became invalid momentarily (reload/animation)
+2. `UpdateRandomBoneState()` set `bRandomBoneInitialized = false` and returned early
+3. `GetTargetBoneIndex()` re-initialized the bone without updating `s_LastRandomAmmoCount`
+4. Next frame, ammo tracking was out of sync → spurious shot detection → rapid bone re-rolls → broken aim
+
+### Verification
+- [x] Build succeeded (0 errors)
+- [x] Patch note recorded
+- [ ] Verified in-game
+
+---
+
 ## [Date: 2026-01-15] - Health Bar Label Warning
 
 **Agent:** opencode

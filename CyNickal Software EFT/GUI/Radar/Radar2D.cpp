@@ -1,5 +1,4 @@
 #include "pch.h"
-#include "pch.h"
 #include "GUI/Radar/Radar2D.h"
 #include "GUI/Color Picker/Color Picker.h"
 #include "GUI/Main Window/Main Window.h"
@@ -9,7 +8,9 @@
 #include "Game/Classes/Players/CClientPlayer/CClientPlayer.h"
 #include "Game/Classes/CObservedLootItem/CObservedLootItem.h"
 #include "Game/Classes/CExfilPoint/CExfilPoint.h"
+#include "Game/Classes/Quest/CQuestManager.h"
 #include "GUI/LootFilter/LootFilter.h"
+#include "GUI/Radar/Widgets/WidgetManager.h"
 #include <fstream>
 #include <filesystem>
 #include <optional>
@@ -775,15 +776,21 @@ void Radar2D::Render()
 	{
 		DrawPlayers(drawList, params, canvasMin, canvasMax);
 	}
-	
+
+	// Draw quest markers
+	if (bShowQuestMarkers)
+	{
+		DrawQuestMarkers(drawList, params, canvasMin, canvasMax);
+	}
+
 	// Draw local player indicator
 	if (bShowLocalPlayer)
 	{
 		DrawLocalPlayer(drawList, params, canvasMin);
 	}
-	
+
 	drawList->PopClipRect();
-	
+
 	// Status bar
 	ImGui::SetCursorPos(ImVec2(10, s_windowSize.y - 22));
 	
@@ -1118,15 +1125,96 @@ void Radar2D::DrawExfils(ImDrawList* drawList, const MapParams& params,
 	}
 }
 
+void Radar2D::DrawQuestMarkers(ImDrawList* drawList, const MapParams& params,
+                               const ImVec2& canvasMin, const ImVec2& canvasMax)
+{
+	if (!params.config)
+		return;
+
+	auto& questMgr = Quest::CQuestManager::GetInstance();
+	auto& settings = questMgr.GetSettings();
+
+	if (!settings.bEnabled || !settings.bShowQuestLocations)
+		return;
+
+	std::scoped_lock lk(questMgr.GetMutex());
+	const auto& questLocations = questMgr.GetQuestLocations();
+
+	for (const auto& loc : questLocations)
+	{
+		ImVec2 screenPos = CoordTransform::WorldToScreen(loc.Position, *params.config, params);
+		screenPos.x += canvasMin.x;
+		screenPos.y += canvasMin.y;
+
+		// Check bounds
+		if (screenPos.x < canvasMin.x || screenPos.x > canvasMax.x ||
+		    screenPos.y < canvasMin.y || screenPos.y > canvasMax.y)
+			continue;
+
+		// Quest marker color (purple by default)
+		ImU32 markerColor = ImGui::ColorConvertFloat4ToU32(settings.QuestLocationColor);
+		float size = settings.fQuestMarkerSize;
+
+		// Draw star/asterisk shape for quest markers
+		const int numPoints = 6;
+		const float innerRadius = size * 0.4f;
+		const float outerRadius = size;
+
+		ImVec2 points[12];
+		for (int i = 0; i < numPoints * 2; i++)
+		{
+			float angle = (float)i * 3.14159f / (float)numPoints - 3.14159f / 2.0f;
+			float radius = (i % 2 == 0) ? outerRadius : innerRadius;
+			points[i] = ImVec2(
+				screenPos.x + std::cos(angle) * radius,
+				screenPos.y + std::sin(angle) * radius
+			);
+		}
+
+		// Draw filled star with outline
+		drawList->AddConvexPolyFilled(points, numPoints * 2, markerColor);
+		drawList->AddPolyline(points, numPoints * 2, IM_COL32(0, 0, 0, 200), ImDrawFlags_Closed, 1.0f);
+
+		// Height indicator
+		float heightDiff = loc.Position.y - s_localPlayerPos.y;
+		int roundedHeight = (int)std::round(heightDiff);
+
+		// Draw quest name and distance
+		float dist = loc.Position.DistanceTo(s_localPlayerPos);
+		int roundedDist = (int)std::round(dist);
+
+		char label[128];
+		if (std::abs(roundedHeight) > 2)
+		{
+			const char* arrow = roundedHeight > 0 ? "▲" : "▼";
+			snprintf(label, sizeof(label), "%s %s (%dm)", loc.QuestName.c_str(), arrow, roundedDist);
+		}
+		else
+		{
+			snprintf(label, sizeof(label), "%s (%dm)", loc.QuestName.c_str(), roundedDist);
+		}
+
+		// Draw label with background for readability
+		ImVec2 textPos(screenPos.x + size + 4, screenPos.y - 6);
+		ImVec2 textSize = ImGui::CalcTextSize(label);
+		drawList->AddRectFilled(
+			ImVec2(textPos.x - 2, textPos.y - 1),
+			ImVec2(textPos.x + textSize.x + 2, textPos.y + textSize.y + 1),
+			IM_COL32(0, 0, 0, 160)
+		);
+		drawList->AddText(textPos, IM_COL32(200, 130, 255, 255), label);
+	}
+}
+
 void Radar2D::DrawLocalPlayer(ImDrawList* drawList, const MapParams& params, const ImVec2& canvasMin)
 {
 	if (!params.config)
 		return;
-	
+
 	ImVec2 screenPos = CoordTransform::WorldToScreen(s_localPlayerPos, *params.config, params);
 	screenPos.x += canvasMin.x;
 	screenPos.y += canvasMin.y;
-	
+
 	// Draw crosshair at local player position
 	const float crossSize = 10.0f;
 	ImU32 crossColor = IM_COL32(255, 255, 255, 150);
@@ -1297,17 +1385,23 @@ void Radar2D::RenderEmbedded()
 	{
 		DrawPlayers(drawList, params, canvasMin, canvasMax);
 	}
-	
+
+	// Draw quest markers
+	if (bShowQuestMarkers)
+	{
+		DrawQuestMarkers(drawList, params, canvasMin, canvasMax);
+	}
+
 	// Draw local player indicator
 	if (bShowLocalPlayer)
 	{
 		DrawLocalPlayer(drawList, params, canvasMin);
 	}
-	
+
 	drawList->PopClipRect();
-	
+
 	ImGui::EndChild();
-	
+
 	// Status bar below the radar canvas
 	std::string floorName = GetCurrentFloorName();
 	ImGui::TextColored(ImVec4(0.7f, 0.7f, 0.7f, 1.0f), "Map: %s (%s) | Zoom: %d%% | Pos: %.0f, %.0f, %.0f", 
@@ -1327,9 +1421,10 @@ void Radar2D::RenderSettings()
 		ImGui::Checkbox("Show Exfils", &bShowExfils);
 		ImGui::Checkbox("Show Local Player", &bShowLocalPlayer);
 		ImGui::Checkbox("Show Map Image", &bShowMapImage);
+		ImGui::Checkbox("Show Quest Markers", &bShowQuestMarkers);
 		ImGui::Checkbox("Auto Floor Switch", &bAutoFloorSwitch);
 		ImGui::Checkbox("Auto-detect Map", &bAutoMap);
-		
+
 		ImGui::Separator();
 		
 		ImGui::SliderInt("Zoom", &iZoom, MIN_ZOOM, MAX_ZOOM, "%d%%");
@@ -1370,4 +1465,41 @@ void Radar2D::RenderSettings()
 	
 	// Include loot filter settings
 	LootFilter::RenderSettings();
+
+	// Include widget settings
+	WidgetManager::RenderSettings();
+
+	// Player focus settings
+	if (ImGui::CollapsingHeader("Player Focus & Groups"))
+	{
+		ImGui::Indent();
+		ImGui::Checkbox("Show Focus Highlight##PF", &bShowFocusHighlight);
+		ImGui::Checkbox("Show Group Lines##PF", &bShowGroupLines);
+		ImGui::Checkbox("Show Hover Tooltip##PF", &bShowHoverTooltip);
+
+		ImGui::Separator();
+		ImGui::Text("Temp Teammates: %zu", PlayerFocus::TempTeammates.size());
+		if (ImGui::Button("Clear All Temp Teammates##PF"))
+		{
+			PlayerFocus::ClearTempTeammates();
+		}
+		if (PlayerFocus::HasFocusedPlayer())
+		{
+			ImGui::SameLine();
+			if (ImGui::Button("Clear Focus##PF"))
+			{
+				PlayerFocus::ClearFocus();
+			}
+		}
+		ImGui::Unindent();
+	}
+}
+
+void Radar2D::RenderOverlayWidgets()
+{
+	if (!bEnabled)
+		return;
+
+	// Render all active widgets
+	WidgetManager::RenderWidgets();
 }

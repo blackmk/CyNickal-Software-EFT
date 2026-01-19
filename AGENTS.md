@@ -25,6 +25,7 @@ build.bat Release Win32      # Release Win32
 
 **Reliable build notes**
 - `build.bat` bootstraps the VS dev environment and builds the `.vcxproj` directly; run it from repo root.
+- **Always invoke `build.bat` directly** (not via `cmd.exe /c`) - direct invocation captures output correctly.
 - Manual fallback (Developer PowerShell for VS 2022): `msbuild "CyNickal Software EFT\CyNickal Software EFT.vcxproj" /p:Configuration=Release /p:Platform=x64 /m /v:minimal`
 
 

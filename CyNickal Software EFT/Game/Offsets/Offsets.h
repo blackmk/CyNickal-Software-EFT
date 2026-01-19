@@ -183,6 +183,15 @@ namespace Offsets
 	namespace CProfile
 	{
 		inline constexpr std::ptrdiff_t pProfileInfo{ 0x48 };
+		inline constexpr std::ptrdiff_t pQuestsData{ 0x98 };
+	}
+
+	/* EFT::QuestStatusData (entry in QuestsData list) */
+	namespace CQuestsData
+	{
+		inline constexpr std::ptrdiff_t pId{ 0x10 };           // String (Task ID)
+		inline constexpr std::ptrdiff_t Status{ 0x1C };        // Int32 (EQuestStatus)
+		inline constexpr std::ptrdiff_t pCompletedConditions{ 0x28 }; // HashSet<MongoID>
 	}
 	namespace CProfileInfo
 	{

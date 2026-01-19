@@ -101,14 +101,20 @@ static void UpdateRandomBoneState(bool bAimKeyActive)
 	auto* pLocal = EFT::GetRegisteredPlayers().GetLocalPlayer();
 	if (!pLocal || pLocal->IsInvalid())
 	{
+		// Full state reset to ensure clean re-initialization
 		Aimbot::bRandomBoneInitialized = false;
+		Aimbot::s_LastRandomHandsController = 0;
+		Aimbot::s_LastRandomAmmoCount = 0;
 		return;
 	}
 
 	auto* pFirearm = pLocal->GetFirearmManager();
 	if (!pFirearm || !pFirearm->IsValid())
 	{
+		// Full state reset to ensure clean re-initialization
 		Aimbot::bRandomBoneInitialized = false;
+		Aimbot::s_LastRandomHandsController = 0;
+		Aimbot::s_LastRandomAmmoCount = 0;
 		return;
 	}
 
@@ -116,6 +122,16 @@ static void UpdateRandomBoneState(bool bAimKeyActive)
 
 	uintptr_t handsAddr = pFirearm->GetHandsControllerAddress();
 	uint32_t currentAmmo = pFirearm->GetCurrentAmmoCount();
+
+	// Validate ammo count - ignore clearly invalid values (0 = read error, >200 = garbage)
+	// This prevents spurious shot detection from corrupted memory reads
+	constexpr uint32_t MAX_REALISTIC_MAG_SIZE = 200;
+	if (currentAmmo == 0 || currentAmmo > MAX_REALISTIC_MAG_SIZE)
+	{
+		// Don't update ammo tracking with invalid values
+		// Keep existing bone, skip shot detection this frame
+		return;
+	}
 
 	if (handsAddr != Aimbot::s_LastRandomHandsController)
 	{
@@ -137,6 +153,13 @@ static void UpdateRandomBoneState(bool bAimKeyActive)
 	if (currentAmmo < Aimbot::s_LastRandomAmmoCount)
 	{
 		uint32_t shotsFired = Aimbot::s_LastRandomAmmoCount - currentAmmo;
+
+		// Sanity check - max realistic shots per frame (prevents state corruption cascade)
+		// If more than 10 shots detected, likely state corruption - just roll once
+		constexpr uint32_t MAX_SHOTS_PER_FRAME = 10;
+		if (shotsFired > MAX_SHOTS_PER_FRAME)
+			shotsFired = 1;
+
 		for (uint32_t i = 0; i < shotsFired; ++i)
 		{
 			Aimbot::s_CurrentRandomBone = RollRandomBone();
@@ -157,12 +180,8 @@ static EBoneIndex GetTargetBoneIndex(uintptr_t targetAddr)
 	case ETargetBone::Pelvis: return EBoneIndex::Pelvis;
 	case ETargetBone::RandomBone:
 	{
-		if (!Aimbot::bRandomBoneInitialized)
-		{
-			Aimbot::s_CurrentRandomBone = RollRandomBone();
-			Aimbot::bRandomBoneInitialized = true;
-		}
-
+		// Initialization is handled by UpdateRandomBoneState() - don't duplicate here
+		// to avoid state desync (missing s_LastRandomAmmoCount update)
 		return Aimbot::s_CurrentRandomBone;
 	}
 	default: return EBoneIndex::Head;
