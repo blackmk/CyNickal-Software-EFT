@@ -12,6 +12,21 @@ Both use DMA (Direct Memory Access) via MemProcFS/vmmdll for memory reading.
 
 ---
 
+## Inspiration Projects
+
+Reference projects for feature ideas. See individual files in `Inspiration/` folder.
+
+| Project | File | Key Features |
+|---------|------|--------------|
+| Lum0s-EFT-DMA-Radar | `Inspiration/Lum0s-EFT-DMA-Radar.md` | MemoryAim, NoRecoil, ESP overlay |
+
+When implementing features from inspiration projects:
+1. Read the corresponding MD file for project structure
+2. Note that most are C# - adapt patterns to C++
+3. Follow existing CyNickal coding conventions
+
+---
+
 ## Build Commands
 
 ### C++ (Main Application)
@@ -120,8 +135,40 @@ CyNickal-Software-EFT-master/
 │   ├── Tarkov/SDK.cs          # C# offsets
 │   └── UI/                    # WPF/SkiaSharp interface
 ├── Dependencies/              # Third-party libs (ImGui, MemProcFS, nlohmann)
+├── Inspiration/               # Reference projects for feature ideas
 └── build.bat                  # C++ build script
 ```
+
+---
+
+## Architecture Overview
+
+### Data Flow
+```
+[Game Memory] → [DMA Thread (MemProcFS)] → [EFT Static Facade] → [ImGui GUI]
+                                                ↓
+                                         [Config System (JSON)]
+```
+
+### Key Components
+
+| Component | Location | Purpose |
+|-----------|----------|---------|
+| DMA Layer | `DMA/` | Memory access via MemProcFS singleton |
+| Game State | `Game/` | `EFT` facade, `CLocalGameWorld`, `CRegisteredPlayers` |
+| GUI | `GUI/` | ImGui/D3D11, `Main Menu.cpp` aggregates all settings |
+| Config | `GUI/Config/` | JSON serialization to `%APPDATA%/EFT_DMA/configs/` |
+
+### Critical Files
+
+| File | Purpose |
+|------|---------|
+| `Game/Offsets/Offsets.h` | Memory offsets (sync with C#) |
+| `EFT-DMA-Radar-Source/src/Tarkov/SDK.cs` | C# offsets (must match C++) |
+| `GUI/Main Menu/Main Menu.cpp` | UI settings aggregation |
+| `GUI/Config/Config.cpp` | Config serialization |
+| `Game/EFT.h` | Game state facade |
+| `DMA/DMA.h` | Memory access singleton |
 
 ---
 
@@ -201,3 +248,63 @@ Document all changes in `PatchNotes.md` (repository root).
 - **Offsets change with game updates** - verify before PRs
 - **DMA hardware required** for full functionality
 - Keep `Dependencies/` libraries in sync with project settings
+
+---
+
+## Dependencies
+
+All in `Dependencies/` directory:
+- **ImGui**: UI framework (DirectX11)
+- **MemProcFS**: DMA memory reading
+- **nlohmann/json**: JSON parsing
+- **sqlite3**: Item database
+- **libcurl**: HTTP requests
+- **Makcu**: Hardware input (Kmbox)
+- **nanosvg**: SVG parsing
+
+---
+
+## Thread Safety
+
+- DMA thread reads memory; GUI thread uses results
+- Use `std::scoped_lock` for mutex protection
+- Data is read-only from GUI perspective
+
+---
+
+## Code Review with CodeRabbit
+
+CodeRabbit CLI is available in WSL (Ubuntu) for AI-powered code reviews.
+
+### Setup
+- **Binary:** `/root/.local/bin/coderabbit` (WSL Ubuntu)
+- **Version:** 0.3.5
+- **API Key:** Set via `CODERABBIT_API_KEY` environment variable
+
+### Quick Commands
+
+```bash
+# Review all changes (from Windows terminal)
+wsl -d Ubuntu -- bash -c "cd /mnt/c/path/to/repo && export PATH=$PATH:/root/.local/bin && export CODERABBIT_API_KEY=<YOUR_API_KEY> && coderabbit review --plain"
+
+# Review uncommitted changes only
+coderabbit review --type uncommitted --plain
+
+# Token-efficient output (for AI agents)
+coderabbit review --prompt-only
+```
+
+### Review Options
+
+| Flag | Purpose |
+|------|---------|
+| `--plain` | Detailed analysis with fix suggestions |
+| `--prompt-only` | Minimal output for token efficiency |
+| `--type uncommitted` | Only uncommitted changes |
+| `--type committed` | Only committed changes |
+| `--base <branch>` | Compare against a specific branch |
+
+### Integration Notes
+- Run from the git repository root directory
+- WSL Ubuntu must have the API key exported in the environment
+- Use `--plain` for human-readable output, `--prompt-only` for AI agent consumption

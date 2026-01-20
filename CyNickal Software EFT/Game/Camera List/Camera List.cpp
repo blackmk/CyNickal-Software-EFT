@@ -202,34 +202,21 @@ CCamera* CameraList::FindWinningOptic(const std::vector<CCamera*>& PotentialOpti
 
 		auto ViewMatrix = PotentialOpticCam->GetViewMatrix();
 
-		// Use std::abs() to properly detect near-zero values regardless of sign
+		// Validate view matrix - skip cameras with invalid data (silent, no spam)
 		if (std::abs(ViewMatrix.M[3][0]) < 0.001f && std::abs(ViewMatrix.M[3][1]) < 0.001f && std::abs(ViewMatrix.M[3][2]) < 0.001f)
-		{
-			std::println("[Camera] Skipping optic camera {} due to zero translation vector.", PotentialOpticCam->GetName());
 			continue;
-		}
 
 		if (ViewMatrix.M[3][3] < 0.1f)
-		{
-			std::println("[Camera] Skipping optic camera {} due to invalid view matrix.", PotentialOpticCam->GetName());
 			continue;
-		}
 
 		float RightMagnitude = std::sqrt(ViewMatrix.M[0][0] * ViewMatrix.M[0][0] + ViewMatrix.M[0][1] * ViewMatrix.M[0][1] + ViewMatrix.M[0][2] * ViewMatrix.M[0][2]);
 		float UpMagnitude = std::sqrt(ViewMatrix.M[1][0] * ViewMatrix.M[1][0] + ViewMatrix.M[1][1] * ViewMatrix.M[1][1] + ViewMatrix.M[1][2] * ViewMatrix.M[1][2]);
 		float ForwardMagnitude = std::sqrt(ViewMatrix.M[2][0] * ViewMatrix.M[2][0] + ViewMatrix.M[2][1] * ViewMatrix.M[2][1] + ViewMatrix.M[2][2] * ViewMatrix.M[2][2]);
 		if (RightMagnitude < 0.1f && UpMagnitude < 0.1f && ForwardMagnitude < 0.1f)
-		{
-			std::println("[Camera] Skipping optic camera {} due to invalid vector magnitude.", PotentialOpticCam->GetName());
 			continue;
-		}
-
-		std::println("[Camera] Found winning optic camera: {}", PotentialOpticCam->GetName());
 
 		return PotentialOpticCam;
 	}
-
-	std::println("[Camera] Failed to find a valid optic camera.");
 
 	return nullptr;
 }

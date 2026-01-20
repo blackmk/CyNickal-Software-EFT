@@ -99,9 +99,12 @@ echo Platform: %PLATFORM%
 echo ============================================================================
 
 REM Build the project
+set "TARGET=%~3"
+if "%TARGET%"=="" set "TARGET=Build"
+
 echo.
-echo Building project...
-"%MSBUILD%" "%PROJECT%" /p:Configuration=%CONFIG% /p:Platform=%PLATFORM% "/p:SolutionDir=%SOLUTIONDIR%" /t:Build /m /v:minimal
+echo Building project... (Target: %TARGET%)
+"%MSBUILD%" "%PROJECT%" /p:Configuration=%CONFIG% /p:Platform=%PLATFORM% "/p:SolutionDir=%SOLUTIONDIR%" /t:%TARGET% /m /v:minimal
 
 
 if %ERRORLEVEL% NEQ 0 (

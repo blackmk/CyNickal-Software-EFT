@@ -271,16 +271,21 @@ void CClientPlayer::QuickFinalize()
 		m_FallbackZoomValue = 1.0f;
 	}
 
-	// Use fallback zoom from jagged array if ScopeZoomValue is 0 or invalid
-	// This handles variable zoom scopes (VUDU, Razor, etc.) that don't update ScopeZoomValue
-	if (m_ScopeZoomValue <= 0.0f || m_ScopeZoomValue > 100.0f)
+	// Variable zoom scopes (VUDU, Razor, etc.) store their actual zoom in the jagged array
+	// ScopeZoomValue at 0x3C is often a cached/static value that doesn't update on zoom changes
+	// Strategy: Always prefer the fallback (jagged array) value when it's valid
+	// because that's where the dynamic zoom level is stored for variable zoom scopes
+	if (m_FallbackZoomValue > 0.0f && m_FallbackZoomValue < 100.0f)
 	{
-		// ScopeZoomValue is invalid, use fallback if available
-		if (m_FallbackZoomValue > 0.0f && m_FallbackZoomValue < 100.0f)
-			m_ScopeZoomValue = m_FallbackZoomValue;
-		else
-			m_ScopeZoomValue = 1.0f;
+		// Fallback is valid - use it (this is the dynamic value from the jagged array)
+		m_ScopeZoomValue = m_FallbackZoomValue;
 	}
+	else if (m_ScopeZoomValue <= 0.0f || m_ScopeZoomValue > 100.0f)
+	{
+		// Both are invalid, default to 1.0
+		m_ScopeZoomValue = 1.0f;
+	}
+	// else: ScopeZoomValue is valid and fallback failed - keep ScopeZoomValue (fixed zoom scopes)
 
 	// Trigger scoped state for ANY optic (including 1x red dots/holos)
 	// The optic radius calculation will handle zoom scaling appropriately
