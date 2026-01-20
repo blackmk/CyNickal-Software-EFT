@@ -2,13 +2,32 @@
 #include "GUI/Fuser/Draw/Loot.h"
 #include "Game/Camera List/Camera List.h"
 #include "GUI/Color Picker/Color Picker.h"
+#include "GUI/ESP/ESPSettings.h"
+#include "GUI/LootFilter/LootFilter.h"
 #include "Game/EFT.h"
 #include <mutex>
+
+// Helper function to get item range based on value tier
+static float GetItemRangeByValue(int32_t price)
+{
+	using namespace ESPSettings::RenderRange;
+
+	// Use LootFilter thresholds for consistency
+	if (price >= LootFilter::MinValueValuable)         return fItemHighRange;    // >100k (default)
+	if (price >= LootFilter::MinValueValuable / 2)     return fItemMediumRange;  // >50k
+	if (price >= LootFilter::MinValueRegular)          return fItemLowRange;     // >20k
+	return fItemRestRange;                                                       // <20k
+}
 
 void DrawESPLoot::DrawAll(const ImVec2& WindowPos, ImDrawList* DrawList)
 
 {
 	if (!bMasterToggle) return;
+
+	// Must be in raid with valid GameWorld and LootList
+	if (!EFT::IsInRaid() || !EFT::pGameWorld) return;
+	if (!EFT::pGameWorld->m_pLootList) return;
+	if (!EFT::pGameWorld->m_pLootList->IsInitialized()) return;
 
 	auto& PlayerList = EFT::GetRegisteredPlayers();
 
@@ -69,7 +88,9 @@ void DrawESPLoot::DrawItem(CObservedLootItem& Item, ImDrawList* DrawList, ImVec2
 {
 	if (Item.IsInvalid()) return;
 
-	if (m_MinItemPrice > 0 && Item.GetItemPrice() < m_MinItemPrice)
+	int32_t itemPrice = Item.GetItemPrice();
+
+	if (m_MinItemPrice > 0 && itemPrice < m_MinItemPrice)
 		return;
 
 	Vector2 ScreenPos{};
@@ -77,16 +98,21 @@ void DrawESPLoot::DrawItem(CObservedLootItem& Item, ImDrawList* DrawList, ImVec2
 
 	auto Distance = LocalPlayerPos.DistanceTo(Item.m_Position);
 
-	if (Distance > fMaxItemDistance)
+	// Use tier-based distance filtering based on item value
+	float maxRange = GetItemRangeByValue(itemPrice);
+	if (Distance > maxRange)
 		return;
 
-	std::string DisplayString = std::format("{0:s} ({1:d}) [{2:.0f}m]", Item.GetName().c_str(), Item.GetItemPrice(), Distance);
+	std::string DisplayString = std::format("{0:s} ({1:d}) [{2:.0f}m]", Item.GetName().c_str(), itemPrice, Distance);
 
 	auto TextSize = ImGui::CalcTextSize(DisplayString.c_str());
 
+	// Use LootFilter's tier-based color system instead of static color
+	ImU32 itemColor = LootFilter::GetItemColor(Item);
+
 	DrawList->AddText(
 		ImVec2(WindowPos.x + ScreenPos.x - (TextSize.x / 2.0f), WindowPos.y + ScreenPos.y - 10.0f - TextSize.y),
-		Item.GetFuserColor(),
+		itemColor,
 		DisplayString.c_str()
 	);
 }
@@ -100,7 +126,8 @@ void DrawESPLoot::DrawContainer(CLootableContainer& Container, ImDrawList* DrawL
 
 	auto Distance = LocalPlayerPos.DistanceTo(Container.m_Position);
 
-	if (Distance > fMaxContainerDistance)
+	// Use configurable container range from ESPSettings
+	if (Distance > ESPSettings::RenderRange::fContainerRange)
 		return;
 
 	std::string DisplayString = std::format("{0:s} [{1:.0f}m]", Container.GetName().c_str(), Distance);

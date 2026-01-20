@@ -15,7 +15,6 @@ public:
 	static bool TryMakeNewGameWorld(DMA_Connection* Conn);
 	static bool IsGameWorldInitialized();
 	static bool IsInRaid();
-	static bool IsDiscoveryPending();
 	static void UpdateRaidState(DMA_Connection* Conn);
 private:
 	static inline Process Proc{};
@@ -24,6 +23,7 @@ private:
 public:
 	static void QuickUpdatePlayers(DMA_Connection* Conn);
 	static void HandlePlayerAllocations(DMA_Connection* Conn);
+	static void HandleLootUpdates(DMA_Connection* Conn);
 
 public:
 	static inline std::unique_ptr<class CLocalGameWorld> pGameWorld{ nullptr };

@@ -202,7 +202,8 @@ CCamera* CameraList::FindWinningOptic(const std::vector<CCamera*>& PotentialOpti
 
 		auto ViewMatrix = PotentialOpticCam->GetViewMatrix();
 
-		if (ViewMatrix.M[3][0] < 0.001f && ViewMatrix.M[3][1] < 0.001f && ViewMatrix.M[3][2] < 0.001f)
+		// Use std::abs() to properly detect near-zero values regardless of sign
+		if (std::abs(ViewMatrix.M[3][0]) < 0.001f && std::abs(ViewMatrix.M[3][1]) < 0.001f && std::abs(ViewMatrix.M[3][2]) < 0.001f)
 		{
 			std::println("[Camera] Skipping optic camera {} due to zero translation vector.", PotentialOpticCam->GetName());
 			continue;
@@ -251,18 +252,22 @@ void CameraList::UpdateOpticRadius()
 	if (!m_bScoped)
 		return;
 
-	auto pOptic = GetSelectedOptic();
 	float minDim = std::min(Fuser::m_ScreenSize.x, Fuser::m_ScreenSize.y);
-	if (minDim <= 0.0f || pOptic == nullptr)
+	if (minDim <= 0.0f)
 		return;
 
-	float zoom = pOptic->GetZoom();
+	// Use player's actual scope zoom value for accurate radius calculation
+	float zoom = GetPlayerScopeZoom();
 
-	if (zoom < 0.01f)
+	// Ensure minimum zoom of 1.0 (1x optics like red dots/holos)
+	if (zoom < 1.0f)
 		zoom = 1.0f;
 
-	float radius = (minDim * 0.5f) / zoom;
-	radius = std::clamp(radius, 100.0f, minDim * 0.5f);
+	// Calculate radius inversely proportional to zoom
+	// For 1x scopes: full radius (45% of screen for margin)
+	// For higher zoom: smaller radius
+	float radius = (minDim * 0.45f) / zoom;
+	radius = std::clamp(radius, 50.0f, minDim * 0.5f);
 
 	SetOpticRadius(radius);
 }
@@ -280,6 +285,16 @@ void CameraList::QuickUpdateNecessaryCameras(DMA_Connection* Conn)
 	if (!bAiming)
 	{
 		m_bScoped = false;
+	}
+
+	// Update player scope zoom for radius calculation
+	if (m_bScoped && pLocalPlayer)
+	{
+		SetPlayerScopeZoom(pLocalPlayer->GetScopeZoom());
+	}
+	else
+	{
+		SetPlayerScopeZoom(1.0f);
 	}
 
 	if (m_pOpticCameras.empty())
@@ -327,4 +342,14 @@ Vector2 CameraList::GetOpticCenter()
 	auto WindowSize = ImGui::GetWindowSize();
 
 	return Vector2(WindowSize.x * 0.5f, WindowSize.y * 0.5f);
+}
+
+void CameraList::SetPlayerScopeZoom(float zoom)
+{
+	m_fPlayerScopeZoom = zoom;
+}
+
+float CameraList::GetPlayerScopeZoom()
+{
+	return m_fPlayerScopeZoom;
 }

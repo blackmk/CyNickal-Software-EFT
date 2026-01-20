@@ -13,17 +13,20 @@ public:
 	static bool IsScoped();
 
 	static void QuickUpdateNecessaryCameras(DMA_Connection* Conn);
-	static inline uint32_t m_OpticIndex{ 0 };
-	static inline bool m_bScoped{ false };
 	static float GetOpticRadius();
 	static Vector2 GetOpticCenter();
-	static void SetOpticRadius(float Width);
 
+	// Player scope zoom management (set by CClientPlayer, used for radius calculation)
+	static void SetPlayerScopeZoom(float zoom);
+	static float GetPlayerScopeZoom();
 
 private:
 	static inline std::vector<CCamera> m_CameraCache{};
 	static inline CCamera* m_pFPSCamera{ nullptr };
 	static inline std::vector<CCamera*> m_pOpticCameras{};
+	static inline uint32_t m_OpticIndex{ 0 };
+	static inline bool m_bScoped{ false };
+	static inline float m_fPlayerScopeZoom{ 1.0f };
 
 private:
 	static bool WorldToScreenEx(const Vector3 WorldPosition, Vector2& ScreenPosition, CCamera* FPSCamera, CCamera* OpticCamera = nullptr);
@@ -33,4 +36,5 @@ private:
 	static CCamera* FindWinningOptic(const std::vector<CCamera*>& PotentialOpticCams);
 	static void UpdateOpticSelection();
 	static void UpdateOpticRadius();
+	static void SetOpticRadius(float Width);
 };

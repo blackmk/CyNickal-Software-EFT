@@ -16,6 +16,13 @@ public:
 	CGenericLootList<CLootableContainer> m_LootableContainers{};
 	CGenericLootList<CObservedLootItem> m_ObservedItems{};
 
+	// Public interface for refreshing loot
+	void RefreshLoot(DMA_Connection* Conn);
+	bool IsInitialized() const { return m_bInitialized; }
+
+	// Static method to reset type address cache (call on raid exit)
+	void ResetTypeCache();
+
 private:
 	void CompleteUpdate(DMA_Connection* Conn);
 	void GetAndSortEntityAddresses(DMA_Connection* Conn);
@@ -24,4 +31,5 @@ private:
 	std::vector<uintptr_t> m_UnsortedAddresses{};
 	uintptr_t m_BaseLootListAddress{ 0 };
 	uint32_t m_LootNum{ 0 };
+	bool m_bInitialized{ false };
 };

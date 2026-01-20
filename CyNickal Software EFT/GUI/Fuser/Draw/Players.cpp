@@ -12,6 +12,17 @@
 // Forward declaration
 static void DrawTextAtPosition(ImDrawList* DrawList, const ImVec2& Position, const ImColor& Color, const std::string& Text);
 
+// Helper function to get player render range based on player type
+static float GetPlayerRange(const CBaseEFTPlayer& player)
+{
+	using namespace ESPSettings::RenderRange;
+
+	if (player.IsBoss())        return fBossRange;
+	if (player.IsPlayerScav())  return fPlayerScavRange;
+	if (player.IsAi())          return fAIRange;
+	return fPMCRange;  // PMC (USEC/BEAR)
+}
+
 // String constants
 static const std::string InjuredString = "(Injured)";
 static const std::string BadlyInjuredString = "(Badly Injured)";
@@ -94,6 +105,11 @@ void DrawESPPlayers::DrawObservedPlayer(const CObservedPlayer& Player, const ImV
 	if (Player.IsInvalid())	return;
 	if (Player.m_pSkeleton == nullptr) return;
 
+	// Check distance against player type range limit
+	float distance = Player.GetBonePosition(EBoneIndex::Root).DistanceTo(m_LatestLocalPlayerPos);
+	float maxRange = GetPlayerRange(Player);
+	if (distance > maxRange) return;
+
 	ProjectedBones.fill({});
 	for (int i = 0; i < SKELETON_NUMBONES; i++)
 		ProjectedBones[i].bIsOnScreen = bForOptic ? CameraList::OpticW2S(Player.m_pSkeleton->m_BonePositions[i], ProjectedBones[i].ScreenPos) : CameraList::W2S(Player.m_pSkeleton->m_BonePositions[i], ProjectedBones[i].ScreenPos);
@@ -159,6 +175,11 @@ void DrawESPPlayers::DrawClientPlayer(const CClientPlayer& Player, const ImVec2&
 	if (Player.IsInvalid())	return;
 	if (Player.IsLocalPlayer())	return;
 	if (Player.m_pSkeleton == nullptr) return;
+
+	// Check distance against player type range limit
+	float distance = Player.GetBonePosition(EBoneIndex::Root).DistanceTo(m_LatestLocalPlayerPos);
+	float maxRange = GetPlayerRange(Player);
+	if (distance > maxRange) return;
 
 	ProjectedBones.fill({});
 	for (int i = 0; i < SKELETON_NUMBONES; i++)

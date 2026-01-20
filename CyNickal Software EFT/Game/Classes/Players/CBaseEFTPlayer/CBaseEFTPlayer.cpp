@@ -199,18 +199,22 @@ const std::string& CBaseEFTPlayer::GetBossName() const
 }
 
 #include "GUI/Color Picker/Color Picker.h"
+#include "GUI/ESP/ESPSettings.h"
+
 const ImColor CBaseEFTPlayer::GetFuserColor() const
 {
+	using namespace ESPSettings::RenderRange;
+
 	if (IsBoss())
-		return ColorPicker::Fuser::m_BossColor;
+		return BossColor;
 
 	if (IsPlayerScav())
-		return ColorPicker::Fuser::m_PlayerScavColor;
+		return PlayerScavColor;
 
 	if (IsAi())
-		return ColorPicker::Fuser::m_ScavColor;
+		return AIColor;
 
-	return ColorPicker::Fuser::m_PMCColor;
+	return PMCColor;
 }
 
 const ImColor CBaseEFTPlayer::GetRadarColor() const

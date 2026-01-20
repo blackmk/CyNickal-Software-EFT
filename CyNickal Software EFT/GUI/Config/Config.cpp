@@ -393,13 +393,40 @@ json Config::SerializeConfig() {
 			{"bHeadDotEnabled", ESPSettings::Enemy::bHeadDotEnabled},
 			{"headDotColor", static_cast<uint32_t>(ESPSettings::Enemy::headDotColor)},
 			{"headDotRadius", ESPSettings::Enemy::headDotRadius}
+		}},
+		{"RenderRange", {
+			// Player ranges
+			{"fPMCRange", ESPSettings::RenderRange::fPMCRange},
+			{"fPlayerScavRange", ESPSettings::RenderRange::fPlayerScavRange},
+			{"fBossRange", ESPSettings::RenderRange::fBossRange},
+			{"fAIRange", ESPSettings::RenderRange::fAIRange},
+			// Player colors
+			{"PMCColor", static_cast<uint32_t>(ESPSettings::RenderRange::PMCColor)},
+			{"PlayerScavColor", static_cast<uint32_t>(ESPSettings::RenderRange::PlayerScavColor)},
+			{"BossColor", static_cast<uint32_t>(ESPSettings::RenderRange::BossColor)},
+			{"AIColor", static_cast<uint32_t>(ESPSettings::RenderRange::AIColor)},
+			// Item ranges
+			{"fItemHighRange", ESPSettings::RenderRange::fItemHighRange},
+			{"fItemMediumRange", ESPSettings::RenderRange::fItemMediumRange},
+			{"fItemLowRange", ESPSettings::RenderRange::fItemLowRange},
+			{"fItemRestRange", ESPSettings::RenderRange::fItemRestRange},
+			// Item colors
+			{"ItemHighColor", static_cast<uint32_t>(ESPSettings::RenderRange::ItemHighColor)},
+			{"ItemMediumColor", static_cast<uint32_t>(ESPSettings::RenderRange::ItemMediumColor)},
+			{"ItemLowColor", static_cast<uint32_t>(ESPSettings::RenderRange::ItemLowColor)},
+			{"ItemRestColor", static_cast<uint32_t>(ESPSettings::RenderRange::ItemRestColor)},
+			// Container range + color
+			{"fContainerRange", ESPSettings::RenderRange::fContainerRange},
+			{"ContainerColor", static_cast<uint32_t>(ESPSettings::RenderRange::ContainerColor)},
+			// Exfil range + color
+			{"fExfilRange", ESPSettings::RenderRange::fExfilRange},
+			{"ExfilColor", static_cast<uint32_t>(ESPSettings::RenderRange::ExfilColor)}
 		}}
 	};
 
 	j["Optic"] = {
-		{"bOpticESP", DrawESPPlayers::bOpticESP},
-		{"m_OpticIndex", CameraList::m_OpticIndex},
-		{"fOpticRadius", CameraList::GetOpticRadius()}
+		{"bOpticESP", DrawESPPlayers::bOpticESP}
+		// Removed: m_OpticIndex, fOpticRadius - now auto-managed
 	};
 
 	j["Tables"] = {
@@ -854,13 +881,41 @@ void Config::DeserializeConfig(const json& j) {
 			if (enemy.contains("headDotColor")) ESPSettings::Enemy::headDotColor = ImColor(enemy["headDotColor"].get<uint32_t>());
 			if (enemy.contains("headDotRadius")) ESPSettings::Enemy::headDotRadius = enemy["headDotRadius"].get<float>();
 		}
+		if (espTable.contains("RenderRange")) {
+			const auto& range = espTable["RenderRange"];
+			// Player ranges
+			if (range.contains("fPMCRange")) ESPSettings::RenderRange::fPMCRange = range["fPMCRange"].get<float>();
+			if (range.contains("fPlayerScavRange")) ESPSettings::RenderRange::fPlayerScavRange = range["fPlayerScavRange"].get<float>();
+			if (range.contains("fBossRange")) ESPSettings::RenderRange::fBossRange = range["fBossRange"].get<float>();
+			if (range.contains("fAIRange")) ESPSettings::RenderRange::fAIRange = range["fAIRange"].get<float>();
+			// Player colors
+			if (range.contains("PMCColor")) ESPSettings::RenderRange::PMCColor = ImColor(range["PMCColor"].get<uint32_t>());
+			if (range.contains("PlayerScavColor")) ESPSettings::RenderRange::PlayerScavColor = ImColor(range["PlayerScavColor"].get<uint32_t>());
+			if (range.contains("BossColor")) ESPSettings::RenderRange::BossColor = ImColor(range["BossColor"].get<uint32_t>());
+			if (range.contains("AIColor")) ESPSettings::RenderRange::AIColor = ImColor(range["AIColor"].get<uint32_t>());
+			// Item ranges
+			if (range.contains("fItemHighRange")) ESPSettings::RenderRange::fItemHighRange = range["fItemHighRange"].get<float>();
+			if (range.contains("fItemMediumRange")) ESPSettings::RenderRange::fItemMediumRange = range["fItemMediumRange"].get<float>();
+			if (range.contains("fItemLowRange")) ESPSettings::RenderRange::fItemLowRange = range["fItemLowRange"].get<float>();
+			if (range.contains("fItemRestRange")) ESPSettings::RenderRange::fItemRestRange = range["fItemRestRange"].get<float>();
+			// Item colors
+			if (range.contains("ItemHighColor")) ESPSettings::RenderRange::ItemHighColor = ImColor(range["ItemHighColor"].get<uint32_t>());
+			if (range.contains("ItemMediumColor")) ESPSettings::RenderRange::ItemMediumColor = ImColor(range["ItemMediumColor"].get<uint32_t>());
+			if (range.contains("ItemLowColor")) ESPSettings::RenderRange::ItemLowColor = ImColor(range["ItemLowColor"].get<uint32_t>());
+			if (range.contains("ItemRestColor")) ESPSettings::RenderRange::ItemRestColor = ImColor(range["ItemRestColor"].get<uint32_t>());
+			// Container range + color
+			if (range.contains("fContainerRange")) ESPSettings::RenderRange::fContainerRange = range["fContainerRange"].get<float>();
+			if (range.contains("ContainerColor")) ESPSettings::RenderRange::ContainerColor = ImColor(range["ContainerColor"].get<uint32_t>());
+			// Exfil range + color
+			if (range.contains("fExfilRange")) ESPSettings::RenderRange::fExfilRange = range["fExfilRange"].get<float>();
+			if (range.contains("ExfilColor")) ESPSettings::RenderRange::ExfilColor = ImColor(range["ExfilColor"].get<uint32_t>());
+		}
 	}
 
 	if (j.contains("Optic")) {
 		const auto& optic = j["Optic"];
 		if (optic.contains("bOpticESP")) DrawESPPlayers::bOpticESP = optic["bOpticESP"].get<bool>();
-		if (optic.contains("m_OpticIndex")) CameraList::m_OpticIndex = optic["m_OpticIndex"].get<uint32_t>();
-		if (optic.contains("fOpticRadius")) CameraList::SetOpticRadius(optic["fOpticRadius"].get<float>());
+		// Removed: m_OpticIndex, fOpticRadius - now auto-managed
 	}
 
 	if (j.contains("Tables")) {

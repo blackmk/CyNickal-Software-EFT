@@ -183,6 +183,48 @@ void CClientPlayer::QuickRead(VMMDLL_SCATTER_HANDLE vmsh)
 	if (m_FirstSightComponent)
 		VMMDLL_Scatter_PrepareEx(vmsh, m_FirstSightComponent + Offsets::CSightComponent::ScopeZoomValue, sizeof(float), reinterpret_cast<BYTE*>(&m_ScopeZoomValue), nullptr);
 
+	// Variable zoom scope support - read additional data for jagged array traversal
+	// These reads use values from the previous frame (1-frame lag is acceptable for zoom changes)
+	if (m_FirstSightComponent)
+	{
+		// Read SelectedScope (which optic index is active) and ScopesSelectedModes pointer
+		VMMDLL_Scatter_PrepareEx(vmsh, m_FirstSightComponent + Offsets::CSightComponent::SelectedScope, sizeof(int32_t), reinterpret_cast<BYTE*>(&m_SelectedScope), nullptr);
+		VMMDLL_Scatter_PrepareEx(vmsh, m_FirstSightComponent + Offsets::CSightComponent::ScopesSelectedModes, sizeof(uintptr_t), reinterpret_cast<BYTE*>(&m_ScopesSelectedModesPtr), nullptr);
+		VMMDLL_Scatter_PrepareEx(vmsh, m_FirstSightComponent + Offsets::CSightComponent::pTemplate, sizeof(uintptr_t), reinterpret_cast<BYTE*>(&m_SightTemplatePtr), nullptr);
+	}
+
+	// Read Zooms array pointer from SightInterface (uses previous frame's SightTemplate)
+	if (m_SightTemplatePtr)
+	{
+		VMMDLL_Scatter_PrepareEx(vmsh, m_SightTemplatePtr + Offsets::CSightInterface::Zooms, sizeof(uintptr_t), reinterpret_cast<BYTE*>(&m_ZoomsArrayPtr), nullptr);
+	}
+
+	// Read the selected mode from ScopesSelectedModes[SelectedScope] (uses previous frame's values)
+	if (m_ScopesSelectedModesPtr && m_SelectedScope >= 0 && m_SelectedScope < 10)
+	{
+		// ScopesSelectedModes is an int32[] - read the mode index for the selected scope
+		// Array structure: [ArrayBase + 0x20] + index * sizeof(int32_t)
+		uintptr_t modeAddr = m_ScopesSelectedModesPtr + 0x20 + (static_cast<uint32_t>(m_SelectedScope) * sizeof(int32_t));
+		VMMDLL_Scatter_PrepareEx(vmsh, modeAddr, sizeof(int32_t), reinterpret_cast<BYTE*>(&m_SelectedScopeMode), nullptr);
+	}
+
+	// Read the scope's zoom array pointer from Zooms[SelectedScope] (uses previous frame's values)
+	if (m_ZoomsArrayPtr && m_SelectedScope >= 0 && m_SelectedScope < 10)
+	{
+		// Zooms is a float[][] (jagged array) - first get the inner array pointer
+		// Structure: [ArrayBase + 0x20] + index * sizeof(uintptr_t) -> float[]
+		uintptr_t scopeZoomArrayAddr = m_ZoomsArrayPtr + 0x20 + (static_cast<uint32_t>(m_SelectedScope) * sizeof(uintptr_t));
+		VMMDLL_Scatter_PrepareEx(vmsh, scopeZoomArrayAddr, sizeof(uintptr_t), reinterpret_cast<BYTE*>(&m_ZoomsScopeArray), nullptr);
+	}
+
+	// Read the actual zoom value from Zooms[SelectedScope][SelectedScopeMode] (uses previous frame's values)
+	if (m_ZoomsScopeArray && m_SelectedScopeMode >= 0 && m_SelectedScopeMode < 10)
+	{
+		// Inner array is float[] - read the zoom value at the selected mode index
+		uintptr_t zoomValueAddr = m_ZoomsScopeArray + 0x20 + (static_cast<uint32_t>(m_SelectedScopeMode) * sizeof(float));
+		VMMDLL_Scatter_PrepareEx(vmsh, zoomValueAddr, sizeof(float), reinterpret_cast<BYTE*>(&m_FallbackZoomValue), nullptr);
+	}
+
 	// Update firearm manager for aimline
 	if (m_pFirearmManager)
 	{
@@ -212,13 +254,37 @@ void CClientPlayer::QuickFinalize()
 		m_OpticCount = 0;
 		m_FirstSightComponent = 0;
 		m_ScopeZoomValue = 1.0f;
+		m_FallbackZoomValue = 1.0f;
 		m_bScoped = false;
+		// Reset zoom chain pointers
+		m_SightTemplatePtr = 0;
+		m_ZoomsArrayPtr = 0;
+		m_ScopesSelectedModesPtr = 0;
+		m_ZoomsScopeArray = 0;
+		m_SelectedScope = 0;
+		m_SelectedScopeMode = 0;
 	}
 
 	if (m_OpticCount <= 0 || m_FirstSightComponent == 0)
+	{
 		m_ScopeZoomValue = 1.0f;
+		m_FallbackZoomValue = 1.0f;
+	}
 
-	m_bScoped = IsAiming() && m_ScopeZoomValue > 1.0f && m_OpticCount > 0 && m_FirstSightComponent != 0;
+	// Use fallback zoom from jagged array if ScopeZoomValue is 0 or invalid
+	// This handles variable zoom scopes (VUDU, Razor, etc.) that don't update ScopeZoomValue
+	if (m_ScopeZoomValue <= 0.0f || m_ScopeZoomValue > 100.0f)
+	{
+		// ScopeZoomValue is invalid, use fallback if available
+		if (m_FallbackZoomValue > 0.0f && m_FallbackZoomValue < 100.0f)
+			m_ScopeZoomValue = m_FallbackZoomValue;
+		else
+			m_ScopeZoomValue = 1.0f;
+	}
+
+	// Trigger scoped state for ANY optic (including 1x red dots/holos)
+	// The optic radius calculation will handle zoom scaling appropriately
+	m_bScoped = IsAiming() && m_OpticCount > 0 && m_FirstSightComponent != 0;
 
 	// Finalize firearm manager for aimline
 	if (m_pFirearmManager)

@@ -16,7 +16,8 @@ void Fuser::Render()
 {
 	if (!bMasterToggle) return;
 
-	if (!EFT::pGameWorld)
+	// Check if we're in raid with a valid GameWorld
+	if (!EFT::IsInRaid() || !EFT::pGameWorld)
 		return;
 
 	// Calculate position based on selected monitor

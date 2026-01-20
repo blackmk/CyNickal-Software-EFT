@@ -2,6 +2,7 @@
 #include "GUI/LootFilter/LootFilter.h"
 #include "Database/ItemDatabase.h"
 #include "GUI/Color Picker/Color Picker.h"
+#include "GUI/ESP/ESPSettings.h"
 #include "Game/Classes/Quest/CQuestManager.h"
 #include <algorithm>
 #include <cctype>
@@ -361,8 +362,7 @@ bool LootFilter::ShouldShow(const CObservedLootItem& item)
 // 1. Quest Items -> Purple (if ShowQuestItems enabled)
 // 2. Important (user-marked) -> Custom color or Turquoise
 // 3. Blacklisted -> Return early (don't render, handled in ShouldShow)
-// 4. Valuable (>MinValueValuable) -> Gold
-// 5. Price tiers based on value
+// 4. Price tiers based on value using ESPSettings colors
 
 ImU32 LootFilter::GetItemColor(const CObservedLootItem& item)
 {
@@ -390,22 +390,18 @@ ImU32 LootFilter::GetItemColor(const CObservedLootItem& item)
 	// Get effective price for tier-based coloring
 	int32_t price = GetEffectivePrice(item);
 
-	// Priority 3: Valuable items (above MinValueValuable)
-	if (price >= MinValueValuable)
-		return LootColors::Valuable;
+	// Price-based tiers using ESPSettings configurable colors
+	using namespace ESPSettings::RenderRange;
 
-	// Price-based tiers (relative to MinValueRegular)
-	if (price >= MinValueValuable / 2)   // 50k+ default
-		return LootColors::HighValue;
-	if (price >= MinValueRegular * 2)    // 40k+ default
-		return LootColors::MediumValue;
-	if (price >= MinValueRegular)        // 20k+ default
-		return LootColors::LowValue;
-	if (price >= MinValueRegular / 2)    // 10k+ default
-		return LootColors::Normal;
+	if (price >= MinValueValuable)                 // >100k (default)
+		return ItemHighColor;
+	if (price >= MinValueValuable / 2)             // >50k
+		return ItemMediumColor;
+	if (price >= MinValueRegular)                  // >20k
+		return ItemLowColor;
 
-	// Low value = Gray
-	return LootColors::BelowThreshold;
+	// Below threshold
+	return ItemRestColor;
 }
 
 // === UI Rendering ===

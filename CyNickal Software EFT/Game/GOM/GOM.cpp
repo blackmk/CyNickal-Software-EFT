@@ -127,9 +127,6 @@ void GOM::GetObjectAddresses(DMA_Connection* Conn, uint32_t MaxNodes)
 	}
 
 	NodeCount = (uint32_t)m_ObjectAddresses.size();
-	auto EndTime = std::chrono::high_resolution_clock::now();
-	auto Duration = std::chrono::duration_cast<std::chrono::milliseconds>(EndTime - StartTime).count();
-	std::println("[EFT] UpdateObjectList: scanned {} nodes in {}ms", NodeCount, Duration);
 }
 
 std::vector<uintptr_t> GOM::GetGameWorldAddresses(DMA_Connection* Conn)
@@ -174,7 +171,6 @@ uintptr_t GOM::FindGameWorldAddressFromCache(DMA_Connection* Conn)
 		if (MainPlayerAddr)
 		{
 			m_MainPlayerAddress = MainPlayerAddr;
-			std::println("[EFT] LocalGameWorld Address: 0x{:X}", LocalWorldAddr);
 			return LocalWorldAddr;
 		}
 	}

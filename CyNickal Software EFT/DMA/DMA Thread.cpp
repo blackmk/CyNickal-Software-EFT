@@ -62,54 +62,53 @@ void DMA_Thread_Main()
 		try { EFT::UpdateRaidState(Conn); } 
 		catch (...) { /* State check failed */ }
 	});
+
+	// Loot update timer - refreshes loot every 5 seconds
+	// Has a 3-second initial delay after GameWorld creation before first load
+	static std::chrono::steady_clock::time_point s_GameWorldCreatedTime{};
+	static bool s_bInitialLootLoadDone = false;
+	CTimer Loot_Update(std::chrono::seconds(5), [&Conn]() {
+		try
+		{
+			if (!EFT::IsInRaid() || !EFT::pGameWorld || !EFT::pGameWorld->m_pLootList)
+				return;
+
+			// Check if this is the first load after entering a raid
+			if (!s_bInitialLootLoadDone)
+			{
+				// Wait 3 seconds after GameWorld creation for game to fully populate loot
+				auto now = std::chrono::steady_clock::now();
+				auto elapsed = std::chrono::duration_cast<std::chrono::seconds>(now - s_GameWorldCreatedTime);
+				if (elapsed.count() < 3)
+					return;
+				s_bInitialLootLoadDone = true;
+			}
+
+			EFT::HandleLootUpdates(Conn);
+		}
+		catch (...)
+		{
+			// Loot update failed, will retry
+		}
+	});
+
 	CTimer GameWorld_Retry(std::chrono::seconds(2), [&Conn]() {
 		try
 		{
-			static bool bLoggedWaiting = false;
-			static auto LastPendingLog = std::chrono::steady_clock::now() - std::chrono::seconds(15);
-			static uint64_t tickCount = 0;
-			tickCount++;
-
-			// Periodic tick logging to confirm loop is running
-			if (tickCount % 5 == 0)
-				std::println("[DMA Thread] GameWorld_Retry tick #{}", tickCount);
-
 			if (EFT::IsGameWorldInitialized())
-			{
-				bLoggedWaiting = false;
 				return;
-			}
-
-			if (!bLoggedWaiting)
-			{
-				std::println("[DMA Thread] Waiting for GameWorld... (Player not in raid?)");
-				bLoggedWaiting = true;
-			}
 
 			if (EFT::TryMakeNewGameWorld(Conn))
 			{
 				std::println("[DMA Thread] LocalGameWorld initialized successfully!");
-				bLoggedWaiting = false;
-				return;
+				// Set timestamp for loot initial delay and reset the flag
+				s_GameWorldCreatedTime = std::chrono::steady_clock::now();
+				s_bInitialLootLoadDone = false;
 			}
-
-			if (EFT::IsDiscoveryPending())
-			{
-				auto now = std::chrono::steady_clock::now();
-				if (now - LastPendingLog >= std::chrono::seconds(10))
-				{
-					std::println("[DMA Thread] Discovery still pending, will keep retrying...");
-					LastPendingLog = now;
-				}
-			}
-		}
-		catch (const std::exception& e)
-		{
-			std::println("[DMA Thread] GameWorld_Retry exception: {}", e.what());
 		}
 		catch (...)
 		{
-			std::println("[DMA Thread] GameWorld_Retry unknown exception");
+			// Discovery failed, will retry on next tick
 		}
 	});
 
@@ -123,6 +122,7 @@ void DMA_Thread_Main()
 		Camera_UpdateViewMatrix.Tick(TimeNow);
 		Keybinds.Tick(TimeNow);
 		RaidState.Tick(TimeNow);
+		Loot_Update.Tick(TimeNow);
 		GameWorld_Retry.Tick(TimeNow);
 	}
 

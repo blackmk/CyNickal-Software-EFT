@@ -3,6 +3,7 @@
 #include "Game/Offsets/Offsets.h"
 #include "Database/Database.h"
 #include "GUI/Color Picker/Color Picker.h"
+#include "GUI/ESP/ESPSettings.h"
 
 CLootableContainer::CLootableContainer(uintptr_t EntityAddress) : CBaseLootItem(EntityAddress)
 {
@@ -46,5 +47,5 @@ const ImColor& CLootableContainer::GetRadarColor() const
 
 const ImColor& CLootableContainer::GetFuserColor() const
 {
-	return ColorPicker::Fuser::m_ContainerColor;
+	return ESPSettings::RenderRange::ContainerColor;
 }

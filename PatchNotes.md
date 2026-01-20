@@ -1,10 +1,112 @@
 # Project Patch Notes
 
-This document tracks changes made to the codebase by AI agents and developers. Please append new entries at the top of the history section (reverse chronological order). After every successful build, add a concise patch note entry (a brief “I changed X” summary is sufficient).
+This document tracks changes made to the codebase by AI agents and developers. Please append new entries at the top of the history section (reverse chronological order). After every successful build, add a concise patch note entry (a brief "I changed X" summary is sufficient).
 
 ## History
 
 <!-- Add new entries below this line -->
+
+## [Date: 2026-01-20] - Scope Zoom Detection Fixes
+
+**Agent:** Claude Code (Antigravity)
+**Focus:** C++
+
+### Changes
+- **Fixed:** Optic camera detection incorrectly flagging negative translation values as "zero" due to missing `std::abs()` in the comparison
+- **Fixed:** Variable zoom scopes (VUDU 1-6x, Razor 1-6x, etc.) not updating ESP circle radius when clicking to zoom in/out
+- **Added:** Full jagged array traversal to read actual zoom value from `SightInterface.Zooms[SelectedScope][ScopesSelectedModes[SelectedScope]]`
+- **Added:** New offsets in `Offsets.h`: `CSightComponent::pTemplate` (0x20), `CSightInterface::Zooms` (0x1B8)
+- **Added:** 7 new member variables to `CClientPlayer` for zoom chain traversal:
+  - `m_SightTemplatePtr`, `m_ZoomsArrayPtr`, `m_ScopesSelectedModesPtr`, `m_ZoomsScopeArray`
+  - `m_SelectedScope`, `m_SelectedScopeMode`, `m_FallbackZoomValue`
+- **Modified:** `CClientPlayer::QuickRead()` - Implements jagged array zoom lookup
+- **Modified:** `CClientPlayer::QuickFinalize()` - Uses fallback zoom value when `ScopeZoomValue` is 0 or invalid
+- **Modified:** `Game/Camera List/Camera List.cpp:205` - Added `std::abs()` to zero translation vector check
+
+### Bug Fixes
+- **Fixed:** Log message `[Camera] Skipping optic camera BaseOpticCamera(Clone) due to zero translation vector.` appearing incorrectly for cameras with negative translation values
+- **Fixed:** Variable zoom scopes showing wrong ESP circle size (stuck at initial zoom level)
+
+### Technical Details
+- **Zoom Data Structure:** Variable zoom scopes store zoom levels in a jagged array (`float[][]`) accessed via `SightInterface.Zooms`
+- **Two-tier detection:** Primary path reads cached `ScopeZoomValue` (0x3C), fallback reads from jagged array when cached value is 0
+- **Reference implementation:** Based on `InspirationFiles/DMA-Radar-master/src/Tarkov/GameWorld/Camera/CameraManager.cs` lines 455-463 and 673-696
+
+### Verification
+- [x] Build succeeded (0 errors)
+- [x] Patch note recorded
+- [ ] Verified in-game (variable zoom scopes should now update ESP circle on zoom change)
+
+---
+
+## [Date: 2026-01-20] - ESP Loot Loading Overhaul
+
+**Agent:** Claude Code (Antigravity)
+**Focus:** C++
+
+### Changes
+- **Modified:** `Game/Classes/CLootList/CLootList.h` - Added public `RefreshLoot()` method, `IsInitialized()` getter, `ResetTypeCache()` method, and `m_bInitialized` flag
+- **Modified:** `Game/Classes/CLootList/CLootList.cpp` - Removed immediate load from constructor (deferred to timer), implemented `RefreshLoot()` and `ResetTypeCache()` methods
+- **Modified:** `Game/Classes/CLocalGameWorld/CLocalGameWorld.h` - Added `RefreshLoot(DMA_Connection*)` passthrough method
+- **Modified:** `Game/Classes/CLocalGameWorld/CLocalGameWorld.cpp` - Implemented `RefreshLoot()` to call CLootList's refresh
+- **Modified:** `Game/EFT.h` - Added `HandleLootUpdates()`, `ResetPlayerCaches()`, `ResetLootCaches()` static methods
+- **Modified:** `Game/EFT.cpp` - Implemented loot update handling, cache reset calls on raid exit in `UpdateRaidState()`
+- **Modified:** `DMA/DMA Thread.cpp` - Added `Loot_Update` CTimer (5 second interval) with 3-second initial delay after GameWorld creation
+- **Modified:** `GUI/Fuser/Fuser.cpp` - Changed render condition from `pGameWorld` check to `EFT::IsInRaid()` for more robust raid detection
+- **Modified:** `GUI/Fuser/Draw/Loot.cpp` - Added `IsInRaid()` check and loot initialization check before drawing
+- **Modified:** `GUI/Fuser/Draw/Exfils.cpp` - Added `IsInRaid()` check for consistent raid state detection
+
+### Bug Fix
+- **Fixed:** Items/loot not showing when starting program with ESP enabled before entering a raid, then going into raid
+- **Root Cause:** Loot was only loaded once in CLootList constructor, never refreshed. Race condition caused empty loot list if GameWorld detected before game fully populated loot.
+
+### Technical Details
+- **Loot Refresh Timer:** 5-second interval refreshes loot list to catch new items (dropped loot, spawned items)
+- **Initial Load Delay:** 3-second delay after GameWorld creation before first loot read, allowing game to fully populate loot list
+- **Cache Cleanup:** Loot type cache and player caches reset on raid exit to ensure clean state for next raid
+- **Render Guards:** ESP rendering now checks `EFT::IsInRaid()` instead of just `pGameWorld` existence
+
+### Verification
+- [x] Build succeeded (0 errors)
+- [x] Patch note recorded
+- [ ] Verified in-game
+
+---
+
+## [Date: 2026-01-20] - ESP Color & Range Settings Refactor
+
+**Agent:** Claude Code (Antigravity)
+**Focus:** C++
+
+### Changes
+- **Modified:** `GUI/ESP/ESPSettings.h` - Added configurable colors for all ESP elements:
+  - Player colors: PMC, PlayerScav, Boss, AI (Red, Orange, Magenta, Yellow)
+  - Item tier colors: High Value (Gold), Medium (Purple), Low (Teal), Rest (Gray-teal)
+  - World colors: Container (Cyan), Exfil (Green)
+- **Modified:** `GUI/LootFilter/LootFilter.cpp` - Uses ESPSettings tier-based colors instead of hardcoded `LootColors`
+- **Modified:** `Game/Classes/Players/CBaseEFTPlayer/CBaseEFTPlayer.cpp` - `GetFuserColor()` now uses ESPSettings player colors
+- **Modified:** `Game/Classes/CExfilPoint/CExfilPoint.cpp` - `GetFuserColor()` uses ESPSettings exfil color
+- **Modified:** `Game/Classes/CLootableContainer/CLootableContainer.cpp` - `GetFuserColor()` uses ESPSettings container color
+- **Modified:** `GUI/Fuser/Draw/Loot.cpp` - Uses `LootFilter::GetItemColor()` for tier-based colors
+- **Modified:** `GUI/Config/Config.cpp` - Added serialization/deserialization for all 10 new color settings
+- **Modified:** `GUI/Main Menu/Main Menu.cpp` - Complete UI reorganization:
+  - Entity ESP tab: Player range sliders with inline color pickers (PMC, PlayerScav, Boss, AI)
+  - World ESP tab: Item tier range sliders with inline color pickers (High, Medium, Low, Rest)
+  - World ranges: Container and Exfil range sliders with inline color pickers
+  - Reset to Defaults button restores all colors and ranges
+
+### Features
+- **Configurable ESP Colors:** All entity types and item tiers now have editable colors
+- **Inline Color Pickers:** Colors displayed next to range sliders for easy customization
+- **Persistent Settings:** All colors saved to config and restored on load
+- **Reset Button:** One-click restore of default colors and ranges
+
+### Verification
+- [x] Build succeeded (0 errors)
+- [x] Patch note recorded
+- [ ] Verified in-game
+
+---
 
 ## [Date: 2026-01-19] - Phase 3: Quest System (Lum0s-Inspired)
 

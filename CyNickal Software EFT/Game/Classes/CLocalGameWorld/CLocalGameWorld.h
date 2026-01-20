@@ -12,6 +12,7 @@ public:
 public:
 	void QuickUpdatePlayers(DMA_Connection* Conn);
 	void HandlePlayerAllocations(DMA_Connection* Conn);
+	void RefreshLoot(DMA_Connection* Conn);
 
 public:
 	std::unique_ptr<class CLootList> m_pLootList{ nullptr };

@@ -4,12 +4,9 @@
 
 CLootList::CLootList(uintptr_t LootListAddress) : CBaseEntity(LootListAddress)
 {
-	std::println("[CLootList] Constructed CLootList with 0x{:X}", LootListAddress);
-
-	auto Conn = DMA_Connection::GetInstance();
-	CompleteUpdate(Conn);
-
-	std::println("[CLootList] CLootList initialized with {} items and {} containers.", m_ObservedItems.m_EntityAddresses.size(), m_LootableContainers.m_EntityAddresses.size());
+	std::println("[CLootList] Constructed CLootList with 0x{:X} - awaiting first refresh", LootListAddress);
+	// Don't load immediately - let the DMA thread handle the first load after a delay
+	// This prevents race conditions where loot list isn't fully populated yet
 }
 
 void CLootList::CompleteUpdate(DMA_Connection* Conn)
@@ -97,4 +94,30 @@ void CLootList::PopulateTypeAddressCache(DMA_Connection* Conn)
 		ObjectTypeAddressCache[TypeNameStr.c_str()] = Addr;
 		std::println("[CLootList] Cached Type: {0} at {1:X}", TypeNameStr.c_str(), Addr);
 	}
+}
+
+void CLootList::RefreshLoot(DMA_Connection* Conn)
+{
+	try
+	{
+		CompleteUpdate(Conn);
+		m_bInitialized = true;
+		std::println("[CLootList] Loot refreshed: {} items, {} containers", 
+			m_ObservedItems.m_Entities.size(), m_LootableContainers.m_Entities.size());
+	}
+	catch (const std::exception& e)
+	{
+		std::println("[CLootList] RefreshLoot exception: {}", e.what());
+	}
+	catch (...)
+	{
+		std::println("[CLootList] RefreshLoot unknown exception");
+	}
+}
+
+void CLootList::ResetTypeCache()
+{
+	ObjectTypeAddressCache.clear();
+	m_bInitialized = false;
+	std::println("[CLootList] Type cache reset for new raid");
 }

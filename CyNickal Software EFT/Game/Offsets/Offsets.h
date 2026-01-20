@@ -99,9 +99,14 @@ namespace Offsets
 	}
 	namespace CSightComponent
 	{
-		inline constexpr std::ptrdiff_t ScopesSelectedModes{ 0x30 };
-		inline constexpr std::ptrdiff_t SelectedScope{ 0x38 };
-		inline constexpr std::ptrdiff_t ScopeZoomValue{ 0x3C };
+		inline constexpr std::ptrdiff_t pTemplate{ 0x20 };              // EFT.InventoryLogic.ISightComponentTemplate (SightInterface)
+		inline constexpr std::ptrdiff_t ScopesSelectedModes{ 0x30 };    // System.Int32[] - current mode index per scope
+		inline constexpr std::ptrdiff_t SelectedScope{ 0x38 };          // System.Int32 - which scope is currently active
+		inline constexpr std::ptrdiff_t ScopeZoomValue{ 0x3C };         // System.Single - cached zoom value (may be 0 for variable zooms)
+	}
+	namespace CSightInterface
+	{
+		inline constexpr std::ptrdiff_t Zooms{ 0x1B8 };                  // System.Single[][] - jagged array of zoom levels per scope/mode
 	}
 	namespace CObservedPlayer
 	{

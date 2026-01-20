@@ -21,6 +21,15 @@ private:
 	std::byte m_AimingByte{ 0 };
 	std::unique_ptr<CFirearmManager> m_pFirearmManager{ nullptr };
 
+	// Variable zoom scope support - jagged array traversal
+	uintptr_t m_SightTemplatePtr{ 0 };           // SightInterface pointer from pTemplate (0x20)
+	uintptr_t m_ZoomsArrayPtr{ 0 };              // Float[][] pointer from SightInterface::Zooms (0x1B8)
+	uintptr_t m_ScopesSelectedModesPtr{ 0 };     // Int32[] pointer from ScopesSelectedModes (0x30)
+	uintptr_t m_ZoomsScopeArray{ 0 };            // Float[] pointer for selected scope's zoom array
+	int32_t m_SelectedScope{ 0 };                // Which scope is active (index into arrays)
+	int32_t m_SelectedScopeMode{ 0 };            // Which zoom mode in selected scope
+	float m_FallbackZoomValue{ 1.0f };           // Computed zoom from jagged array lookup
+
 
 public:
 	CClientPlayer(uintptr_t EntityAddress) : CBaseEFTPlayer(EntityAddress) {}

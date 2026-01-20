@@ -504,166 +504,249 @@ static void RenderEntityESPContent()
 	float totalHeight = ImGui::GetContentRegionAvail().y;
 	float previewWidth = totalWidth * 0.35f;  // 35% for preview
 	float settingsWidth = totalWidth * 0.65f; // 65% for settings
-	
+	float topRowHeight = totalHeight * 0.65f; // 65% for ESP settings
+
 	// ========================================================================
 	// LEFT SIDE - Preview Panel (always visible)
 	// ========================================================================
 	ImGui::BeginChild("ESPPreviewPanel", ImVec2(previewWidth, 0), false);
 	{
 		BeginPanel("ESP Preview", "Live visualization", totalHeight - 20.0f);
-		
+
 		// Master toggle at top of preview
 		CustomToggle("Enable Fuser (Master)", &Fuser::bMasterToggle);
 		ImGui::Spacing();
 		ImGui::Separator();
 		ImGui::Spacing();
-		
+
 		// Render the preview using remaining space
 		ImVec2 previewAvail = ImGui::GetContentRegionAvail();
 		if (previewAvail.x > 50.0f && previewAvail.y > 100.0f)
 		{
 			ESPPreview::Render(previewAvail);
 		}
-		
+
 		EndPanel();
 	}
 	ImGui::EndChild();
-	
+
 	ImGui::SameLine();
-	
+
 	// ========================================================================
-	// RIGHT SIDE - 3-Column Settings
+	// RIGHT SIDE - ESP Settings + Player Range Settings
 	// ========================================================================
 	ImGui::BeginChild("ESPSettingsPanel", ImVec2(0, 0), false);
 	{
-		float colWidth = (settingsWidth - 30.0f) / 3.0f;  // 3 equal columns with spacing
-		
-		// --- Column 1: Box ESP ---
-		ImGui::BeginChild("ESPCol1", ImVec2(colWidth, 0), false);
+		// ========================================================================
+		// TOP ROW: 3-Column ESP Settings
+		// ========================================================================
+		ImGui::BeginChild("ESPTopRow", ImVec2(0, topRowHeight), false);
 		{
-			BeginPanel("Box ESP", nullptr);
-			
-			using namespace ESPSettings::Enemy;
-			
-			CustomToggle("Enable##Box", &bBoxEnabled);
-			
-			if (bBoxEnabled)
+			float colWidth = (settingsWidth - 30.0f) / 3.0f;  // 3 equal columns with spacing
+
+			// --- Column 1: Box ESP ---
+			ImGui::BeginChild("ESPCol1", ImVec2(colWidth, 0), false);
 			{
-				ImGui::Spacing();
-				
-				ImGui::Text("Style");
-				ImGui::SetNextItemWidth(-1);
-				static const char* styles[] = { "Full", "Corners" };
-				ImGui::Combo("##BoxStyle", &boxStyle, styles, IM_ARRAYSIZE(styles));
-				
-				ImGui::Spacing();
-				ColorPickerButton("Color##Box", boxColor);
-				
-				ImGui::Text("Thickness");
-				ImGui::SetNextItemWidth(-1);
-				ImGui::SliderFloat("##BoxThick", &boxThickness, 1.0f, 5.0f, "%.1f");
-				
-				ImGui::Spacing();
-				CustomToggle("Filled##Box", &bBoxFilled);
-				if (bBoxFilled)
+				BeginPanel("Box ESP", nullptr);
+
+				using namespace ESPSettings::Enemy;
+
+				CustomToggle("Enable##Box", &bBoxEnabled);
+
+				if (bBoxEnabled)
 				{
-					ColorPickerButton("Fill##Box", boxFillColor);
+					ImGui::Spacing();
+
+					ImGui::Text("Style");
+					ImGui::SetNextItemWidth(-1);
+					static const char* styles[] = { "Full", "Corners" };
+					ImGui::Combo("##BoxStyle", &boxStyle, styles, IM_ARRAYSIZE(styles));
+
+					ImGui::Spacing();
+					ColorPickerButton("Color##Box", boxColor);
+
+					ImGui::Text("Thickness");
+					ImGui::SetNextItemWidth(-1);
+					ImGui::SliderFloat("##BoxThick", &boxThickness, 1.0f, 5.0f, "%.1f");
+
+					ImGui::Spacing();
+					CustomToggle("Filled##Box", &bBoxFilled);
+					if (bBoxFilled)
+					{
+						ColorPickerButton("Fill##Box", boxFillColor);
+					}
 				}
+
+				EndPanel();
 			}
-			
-			EndPanel();
-		}
-		ImGui::EndChild();
-		
-		ImGui::SameLine();
-		
-		// --- Column 2: Skeleton ESP ---
-		ImGui::BeginChild("ESPCol2", ImVec2(colWidth, 0), false);
-		{
-			BeginPanel("Skeleton", nullptr);
-			
-			using namespace ESPSettings::Enemy;
-			
-			CustomToggle("Enable##Skel", &bSkeletonEnabled);
-			
-			if (bSkeletonEnabled)
+			ImGui::EndChild();
+
+			ImGui::SameLine();
+
+			// --- Column 2: Skeleton ESP ---
+			ImGui::BeginChild("ESPCol2", ImVec2(colWidth, 0), false);
 			{
-				ImGui::Spacing();
-				ColorPickerButton("Color##Skel", skeletonColor);
-				
-				ImGui::Text("Thickness");
-				ImGui::SetNextItemWidth(-1);
-				ImGui::SliderFloat("##SkelThick", &skeletonThickness, 1.0f, 5.0f, "%.1f");
-				
+				BeginPanel("Skeleton", nullptr);
+
+				using namespace ESPSettings::Enemy;
+
+				CustomToggle("Enable##Skel", &bSkeletonEnabled);
+
+				if (bSkeletonEnabled)
+				{
+					ImGui::Spacing();
+					ColorPickerButton("Color##Skel", skeletonColor);
+
+					ImGui::Text("Thickness");
+					ImGui::SetNextItemWidth(-1);
+					ImGui::SliderFloat("##SkelThick", &skeletonThickness, 1.0f, 5.0f, "%.1f");
+
+					ImGui::Spacing();
+					ImGui::Separator();
+					ImGui::Spacing();
+
+					ImGui::Text("Bone Groups");
+					CustomToggle("Head/Neck", &bBonesHead);
+					CustomToggle("Spine", &bBonesSpine);
+					CustomToggle("Left Arm", &bBonesArmsL);
+					CustomToggle("Right Arm", &bBonesArmsR);
+					CustomToggle("Left Leg", &bBonesLegsL);
+					CustomToggle("Right Leg", &bBonesLegsR);
+				}
+
+				EndPanel();
+			}
+			ImGui::EndChild();
+
+			ImGui::SameLine();
+
+			// --- Column 3: Info ESP ---
+			ImGui::BeginChild("ESPCol3", ImVec2(0, 0), false);
+			{
+				BeginPanel("Info ESP", nullptr);
+
+				using namespace ESPSettings::Enemy;
+
+				CustomToggle("Name##Info", &bNameEnabled);
+				if (bNameEnabled)
+				{
+					ImGui::SameLine();
+					float col[4] = { nameColor.Value.x, nameColor.Value.y, nameColor.Value.z, nameColor.Value.w };
+					if (ImGui::ColorEdit4("##NameCol", col, ImGuiColorEditFlags_NoInputs | ImGuiColorEditFlags_NoLabel))
+						nameColor = ImColor(col[0], col[1], col[2], col[3]);
+				}
+
+				CustomToggle("Weapon##Info", &bWeaponEnabled);
+				if (bWeaponEnabled)
+				{
+					ImGui::SameLine();
+					float col[4] = { weaponColor.Value.x, weaponColor.Value.y, weaponColor.Value.z, weaponColor.Value.w };
+					if (ImGui::ColorEdit4("##WeaponCol", col, ImGuiColorEditFlags_NoInputs | ImGuiColorEditFlags_NoLabel))
+						weaponColor = ImColor(col[0], col[1], col[2], col[3]);
+				}
+
+				CustomToggle("Distance##Info", &bDistanceEnabled);
+				if (bDistanceEnabled)
+				{
+					ImGui::SameLine();
+					float col[4] = { distanceColor.Value.x, distanceColor.Value.y, distanceColor.Value.z, distanceColor.Value.w };
+					if (ImGui::ColorEdit4("##DistCol", col, ImGuiColorEditFlags_NoInputs | ImGuiColorEditFlags_NoLabel))
+						distanceColor = ImColor(col[0], col[1], col[2], col[3]);
+				}
+
+				CustomToggle("Health Bar (doesnt work)##Info", &bHealthEnabled);
+
 				ImGui::Spacing();
 				ImGui::Separator();
 				ImGui::Spacing();
-				
-				ImGui::Text("Bone Groups");
-				CustomToggle("Head/Neck", &bBonesHead);
-				CustomToggle("Spine", &bBonesSpine);
-				CustomToggle("Left Arm", &bBonesArmsL);
-				CustomToggle("Right Arm", &bBonesArmsR);
-				CustomToggle("Left Leg", &bBonesLegsL);
-				CustomToggle("Right Leg", &bBonesLegsR);
+
+				CustomToggle("Head Dot##Info", &bHeadDotEnabled);
+				if (bHeadDotEnabled)
+				{
+					ColorPickerButton("Dot Color##Info", headDotColor);
+					ImGui::Text("Radius");
+					ImGui::SetNextItemWidth(-1);
+					ImGui::SliderFloat("##DotRad", &headDotRadius, 1.0f, 10.0f, "%.1f");
+				}
+
+				EndPanel();
 			}
-			
-			EndPanel();
+			ImGui::EndChild();
 		}
 		ImGui::EndChild();
-		
-		ImGui::SameLine();
-		
-		// --- Column 3: Info ESP ---
-		ImGui::BeginChild("ESPCol3", ImVec2(0, 0), false);
+
+		ImGui::Spacing();
+
+		// ========================================================================
+		// BOTTOM ROW: Player Range Settings (2 columns)
+		// ========================================================================
+		ImGui::BeginChild("ESPBottomRow", ImVec2(0, 0), false);
 		{
-			BeginPanel("Info ESP", nullptr);
-			
-			using namespace ESPSettings::Enemy;
-			
-			CustomToggle("Name##Info", &bNameEnabled);
-			if (bNameEnabled)
+			float rangeColWidth = (settingsWidth - 24.0f) / 2.0f;
+
+			// Column 1: PMC and Player Scav
+			ImGui::BeginChild("PlayerRangeCol1", ImVec2(rangeColWidth, 0), false);
 			{
-				ImGui::SameLine();
-				float col[4] = { nameColor.Value.x, nameColor.Value.y, nameColor.Value.z, nameColor.Value.w };
-				if (ImGui::ColorEdit4("##NameCol", col, ImGuiColorEditFlags_NoInputs | ImGuiColorEditFlags_NoLabel))
-					nameColor = ImColor(col[0], col[1], col[2], col[3]);
-			}
-			
-			CustomToggle("Weapon##Info", &bWeaponEnabled);
-			if (bWeaponEnabled)
-			{
-				ImGui::SameLine();
-				float col[4] = { weaponColor.Value.x, weaponColor.Value.y, weaponColor.Value.z, weaponColor.Value.w };
-				if (ImGui::ColorEdit4("##WeaponCol", col, ImGuiColorEditFlags_NoInputs | ImGuiColorEditFlags_NoLabel))
-					weaponColor = ImColor(col[0], col[1], col[2], col[3]);
-			}
-			
-			CustomToggle("Distance##Info", &bDistanceEnabled);
-			if (bDistanceEnabled)
-			{
-				ImGui::SameLine();
-				float col[4] = { distanceColor.Value.x, distanceColor.Value.y, distanceColor.Value.z, distanceColor.Value.w };
-				if (ImGui::ColorEdit4("##DistCol", col, ImGuiColorEditFlags_NoInputs | ImGuiColorEditFlags_NoLabel))
-					distanceColor = ImColor(col[0], col[1], col[2], col[3]);
-			}
-			
-			CustomToggle("Health Bar (doesnt work)##Info", &bHealthEnabled);
-			
-			ImGui::Spacing();
-			ImGui::Separator();
-			ImGui::Spacing();
-			
-			CustomToggle("Head Dot##Info", &bHeadDotEnabled);
-			if (bHeadDotEnabled)
-			{
-				ColorPickerButton("Dot Color##Info", headDotColor);
-				ImGui::Text("Radius");
+				BeginPanel("Player Ranges", "ESP render distance + colors");
+
+				using namespace ESPSettings::RenderRange;
+
+				// PMC with inline color picker
+				ImGui::Text("PMC");
+				ImGui::SameLine(ImGui::GetContentRegionAvail().x - 30.0f);
+				float pmcCol[4] = { PMCColor.Value.x, PMCColor.Value.y, PMCColor.Value.z, PMCColor.Value.w };
+				if (ImGui::ColorEdit4("##PMCCol", pmcCol, ImGuiColorEditFlags_NoInputs | ImGuiColorEditFlags_NoLabel))
+					PMCColor = ImColor(pmcCol[0], pmcCol[1], pmcCol[2], pmcCol[3]);
 				ImGui::SetNextItemWidth(-1);
-				ImGui::SliderFloat("##DotRad", &headDotRadius, 1.0f, 10.0f, "%.1f");
+				ImGui::SliderFloat("##PMCRange", &fPMCRange, 50.0f, 1000.0f, "%.0f m");
+
+				ImGui::Spacing();
+
+				// Player Scav with inline color picker
+				ImGui::Text("Player Scav");
+				ImGui::SameLine(ImGui::GetContentRegionAvail().x - 30.0f);
+				float pscavCol[4] = { PlayerScavColor.Value.x, PlayerScavColor.Value.y, PlayerScavColor.Value.z, PlayerScavColor.Value.w };
+				if (ImGui::ColorEdit4("##PScavCol", pscavCol, ImGuiColorEditFlags_NoInputs | ImGuiColorEditFlags_NoLabel))
+					PlayerScavColor = ImColor(pscavCol[0], pscavCol[1], pscavCol[2], pscavCol[3]);
+				ImGui::SetNextItemWidth(-1);
+				ImGui::SliderFloat("##PScavRange", &fPlayerScavRange, 50.0f, 1000.0f, "%.0f m");
+
+				EndPanel();
 			}
-			
-			EndPanel();
+			ImGui::EndChild();
+
+			ImGui::SameLine();
+
+			// Column 2: Boss and AI Scav
+			ImGui::BeginChild("PlayerRangeCol2", ImVec2(0, 0), false);
+			{
+				BeginPanel("AI Ranges", nullptr);
+
+				using namespace ESPSettings::RenderRange;
+
+				// Boss with inline color picker
+				ImGui::Text("Boss");
+				ImGui::SameLine(ImGui::GetContentRegionAvail().x - 30.0f);
+				float bossCol[4] = { BossColor.Value.x, BossColor.Value.y, BossColor.Value.z, BossColor.Value.w };
+				if (ImGui::ColorEdit4("##BossCol", bossCol, ImGuiColorEditFlags_NoInputs | ImGuiColorEditFlags_NoLabel))
+					BossColor = ImColor(bossCol[0], bossCol[1], bossCol[2], bossCol[3]);
+				ImGui::SetNextItemWidth(-1);
+				ImGui::SliderFloat("##BossRange", &fBossRange, 50.0f, 1000.0f, "%.0f m");
+
+				ImGui::Spacing();
+
+				// AI Scav with inline color picker
+				ImGui::Text("AI Scav");
+				ImGui::SameLine(ImGui::GetContentRegionAvail().x - 30.0f);
+				float aiCol[4] = { AIColor.Value.x, AIColor.Value.y, AIColor.Value.z, AIColor.Value.w };
+				if (ImGui::ColorEdit4("##AICol", aiCol, ImGuiColorEditFlags_NoInputs | ImGuiColorEditFlags_NoLabel))
+					AIColor = ImColor(aiCol[0], aiCol[1], aiCol[2], aiCol[3]);
+				ImGui::SetNextItemWidth(-1);
+				ImGui::SliderFloat("##AIRange", &fAIRange, 50.0f, 1000.0f, "%.0f m");
+
+				EndPanel();
+			}
+			ImGui::EndChild();
 		}
 		ImGui::EndChild();
 	}
@@ -672,161 +755,299 @@ static void RenderEntityESPContent()
 
 static void RenderWorldESPContent()
 {
+	float totalHeight = ImGui::GetContentRegionAvail().y;
+	float topRowHeight = totalHeight * 0.45f;
 	float colWidth = (ImGui::GetContentRegionAvail().x - 24.0f) / 3.0f;
-	
+
 	// ========================================================================
-	// Column 1: Loot & Objects
+	// TOP ROW: Original 3 columns
 	// ========================================================================
-	ImGui::BeginChild("WorldCol1", ImVec2(colWidth, 0), false);
+	ImGui::BeginChild("WorldTopRow", ImVec2(0, topRowHeight), false);
 	{
-		BeginPanel("Loot & Objects", nullptr);
-		
-		CustomToggle("Show Loot (Master)", &DrawESPLoot::bMasterToggle);
-		
-		ImGui::Spacing();
-		
-		CustomToggle("Containers", &DrawESPLoot::bContainerToggle);
-		CustomToggle("Items", &DrawESPLoot::bItemToggle);
-		
-		ImGui::Spacing();
-		ImGui::Separator();
-		ImGui::Spacing();
-		
-		CustomToggle("Show Exfils", &DrawExfils::bMasterToggle);
-		
-		ImGui::Spacing();
-		ImGui::Separator();
-		ImGui::Spacing();
-		
-		ImGui::Text("Colors");
-		ColorPickerButton("Loot##World", ColorPicker::Fuser::m_LootColor);
-		ColorPickerButton("Container##World", ColorPicker::Fuser::m_ContainerColor);
-		ColorPickerButton("Exfil##World", ColorPicker::Fuser::m_ExfilColor);
-		
-		EndPanel();
-	}
-	ImGui::EndChild();
-	
-	ImGui::SameLine();
-	
-	// ========================================================================
-	// Column 2: Display Settings (Fuser/Monitor)
-	// ========================================================================
-	ImGui::BeginChild("WorldCol2", ImVec2(colWidth, 0), false);
-	{
-		BeginPanel("Display Settings", nullptr);
-		
-		CustomToggle("ESP Overlay", &Fuser::bMasterToggle);
-		
-		ImGui::Spacing();
-		ImGui::Separator();
-		ImGui::Spacing();
-		
-		// Monitor selection
-		static bool bMonitorsInit = false;
-		static std::vector<MonitorData> monitorList;
-		auto RefreshMonitors = [&]()
+		// Column 1: Loot & Objects
+		ImGui::BeginChild("WorldCol1", ImVec2(colWidth, 0), false);
 		{
-			monitorList = MonitorHelper::GetAllMonitors();
-			if (Fuser::m_SelectedMonitor < 0 || Fuser::m_SelectedMonitor >= static_cast<int>(monitorList.size()))
-			{
-				Fuser::m_SelectedMonitor = monitorList.empty() ? -1 : 0;
-			}
-			if (!monitorList.empty() && Fuser::m_SelectedMonitor >= 0 && Fuser::m_SelectedMonitor < static_cast<int>(monitorList.size()))
-			{
-				const auto& m = monitorList[Fuser::m_SelectedMonitor];
-				Fuser::m_ScreenSize.x = static_cast<float>(std::abs(m.rcMonitor.right - m.rcMonitor.left));
-				Fuser::m_ScreenSize.y = static_cast<float>(std::abs(m.rcMonitor.bottom - m.rcMonitor.top));
-			}
-		};
-		if (!bMonitorsInit)
-		{
-			RefreshMonitors();
-			bMonitorsInit = true;
-		}
-		
-		ImGui::Text("Monitor");
-		ImGui::SameLine();
-		if (ImGui::SmallButton("Refresh##Mon"))
-		{
-			RefreshMonitors();
-		}
-		
-		if (!monitorList.empty())
-		{
-			std::string preview = "Select...";
-			if (Fuser::m_SelectedMonitor >= 0 && Fuser::m_SelectedMonitor < static_cast<int>(monitorList.size()))
-			{
-				preview = monitorList[Fuser::m_SelectedMonitor].friendlyName;
-			}
-			ImGui::SetNextItemWidth(-1);
-			if (ImGui::BeginCombo("##Monitor", preview.c_str()))
-			{
-				for (const auto& m : monitorList)
-				{
-					bool isSelected = (Fuser::m_SelectedMonitor == m.index);
-					if (ImGui::Selectable(m.friendlyName.c_str(), isSelected))
-					{
-						Fuser::m_SelectedMonitor = m.index;
-						Fuser::m_ScreenSize.x = static_cast<float>(std::abs(m.rcMonitor.right - m.rcMonitor.left));
-						Fuser::m_ScreenSize.y = static_cast<float>(std::abs(m.rcMonitor.bottom - m.rcMonitor.top));
-						MonitorHelper::MoveWindowToMonitor(MainWindow::g_hWnd, m.index);
-					}
-					if (isSelected) ImGui::SetItemDefaultFocus();
-				}
-				ImGui::EndCombo();
-			}
-		}
-		else
-		{
-			ImGui::TextColored(ImVec4(1.0f, 0.5f, 0.5f, 1.0f), "No displays");
-		}
-		
-		ImGui::Spacing();
-		ImGui::Text("Screen: %.0fx%.0f", Fuser::m_ScreenSize.x, Fuser::m_ScreenSize.y);
-		
-		EndPanel();
-	}
-	ImGui::EndChild();
-	
-	ImGui::SameLine();
-	
-	// ========================================================================
-	// Column 3: Optic ESP & Indicators
-	// ========================================================================
-	ImGui::BeginChild("WorldCol3", ImVec2(0, 0), false);
-	{
-		BeginPanel("Optic ESP", nullptr);
-		
-		CustomToggle("Enable Optic ESP", &DrawESPPlayers::bOpticESP);
-		
-		if (DrawESPPlayers::bOpticESP)
-		{
+			BeginPanel("Loot & Objects", nullptr);
+
+			CustomToggle("Show Loot (Master)", &DrawESPLoot::bMasterToggle);
+
 			ImGui::Spacing();
-			
-			ImGui::Text("Optic Index");
-			ImGui::SetNextItemWidth(-1);
-			ImGui::InputScalarN("##OpticIdx", ImGuiDataType_U32, &CameraList::m_OpticIndex, 1);
-			
-			static float fNewRadius{ 300.0f };
-			ImGui::Text("Optic Radius");
-			ImGui::SetNextItemWidth(-1);
-			if (ImGui::SliderFloat("##OpticRad", &fNewRadius, 100.0f, 500.0f, "%.0f"))
-			{
-				CameraList::SetOpticRadius(fNewRadius);
-			}
+
+			CustomToggle("Containers", &DrawESPLoot::bContainerToggle);
+			CustomToggle("Items", &DrawESPLoot::bItemToggle);
+
+			ImGui::Spacing();
+			ImGui::Separator();
+			ImGui::Spacing();
+
+			CustomToggle("Show Exfils", &DrawExfils::bMasterToggle);
+
+			EndPanel();
 		}
-		
-		EndPanel();
-		
-		ImGui::Spacing();
-		
-		BeginPanel("Data Tables", nullptr);
-		
-		CustomToggle("Player Table", &PlayerTable::bMasterToggle);
-		CustomToggle("Item Table", &ItemTable::bMasterToggle);
-		
-		EndPanel();
+		ImGui::EndChild();
+
+		ImGui::SameLine();
+
+		// Column 2: Display Settings (Fuser/Monitor)
+		ImGui::BeginChild("WorldCol2", ImVec2(colWidth, 0), false);
+		{
+			BeginPanel("Display Settings", nullptr);
+
+			CustomToggle("ESP Overlay", &Fuser::bMasterToggle);
+
+			ImGui::Spacing();
+			ImGui::Separator();
+			ImGui::Spacing();
+
+			// Monitor selection
+			static bool bMonitorsInit = false;
+			static std::vector<MonitorData> monitorList;
+			auto RefreshMonitors = [&]()
+			{
+				monitorList = MonitorHelper::GetAllMonitors();
+				if (Fuser::m_SelectedMonitor < 0 || Fuser::m_SelectedMonitor >= static_cast<int>(monitorList.size()))
+				{
+					Fuser::m_SelectedMonitor = monitorList.empty() ? -1 : 0;
+				}
+				if (!monitorList.empty() && Fuser::m_SelectedMonitor >= 0 && Fuser::m_SelectedMonitor < static_cast<int>(monitorList.size()))
+				{
+					const auto& m = monitorList[Fuser::m_SelectedMonitor];
+					Fuser::m_ScreenSize.x = static_cast<float>(std::abs(m.rcMonitor.right - m.rcMonitor.left));
+					Fuser::m_ScreenSize.y = static_cast<float>(std::abs(m.rcMonitor.bottom - m.rcMonitor.top));
+				}
+			};
+			if (!bMonitorsInit)
+			{
+				RefreshMonitors();
+				bMonitorsInit = true;
+			}
+
+			ImGui::Text("Monitor");
+			ImGui::SameLine();
+			if (ImGui::SmallButton("Refresh##Mon"))
+			{
+				RefreshMonitors();
+			}
+
+			if (!monitorList.empty())
+			{
+				std::string preview = "Select...";
+				if (Fuser::m_SelectedMonitor >= 0 && Fuser::m_SelectedMonitor < static_cast<int>(monitorList.size()))
+				{
+					preview = monitorList[Fuser::m_SelectedMonitor].friendlyName;
+				}
+				ImGui::SetNextItemWidth(-1);
+				if (ImGui::BeginCombo("##Monitor", preview.c_str()))
+				{
+					for (const auto& m : monitorList)
+					{
+						bool isSelected = (Fuser::m_SelectedMonitor == m.index);
+						if (ImGui::Selectable(m.friendlyName.c_str(), isSelected))
+						{
+							Fuser::m_SelectedMonitor = m.index;
+							Fuser::m_ScreenSize.x = static_cast<float>(std::abs(m.rcMonitor.right - m.rcMonitor.left));
+							Fuser::m_ScreenSize.y = static_cast<float>(std::abs(m.rcMonitor.bottom - m.rcMonitor.top));
+							MonitorHelper::MoveWindowToMonitor(MainWindow::g_hWnd, m.index);
+						}
+						if (isSelected) ImGui::SetItemDefaultFocus();
+					}
+					ImGui::EndCombo();
+				}
+			}
+			else
+			{
+				ImGui::TextColored(ImVec4(1.0f, 0.5f, 0.5f, 1.0f), "No displays");
+			}
+
+			ImGui::Spacing();
+			ImGui::Text("Screen: %.0fx%.0f", Fuser::m_ScreenSize.x, Fuser::m_ScreenSize.y);
+
+			EndPanel();
+		}
+		ImGui::EndChild();
+
+		ImGui::SameLine();
+
+		// Column 3: Optic ESP & Indicators
+		ImGui::BeginChild("WorldCol3", ImVec2(0, 0), false);
+		{
+			BeginPanel("Optic ESP", nullptr);
+
+			CustomToggle("Enable Optic ESP", &DrawESPPlayers::bOpticESP);
+
+			if (DrawESPPlayers::bOpticESP)
+			{
+				ImGui::Spacing();
+				ImGui::Separator();
+				ImGui::Spacing();
+
+				// Auto-detection status display (read-only)
+				if (CameraList::IsScoped())
+				{
+					ImGui::TextColored(ImVec4(0.4f, 1.0f, 0.4f, 1.0f), "Status: Active");
+					ImGui::Text("Zoom: %.1fx", CameraList::GetPlayerScopeZoom());
+					ImGui::Text("Radius: %.0f px", CameraList::GetOpticRadius());
+				}
+				else
+				{
+					ImGui::TextColored(ImVec4(0.6f, 0.6f, 0.6f, 1.0f), "Status: Not Scoped");
+				}
+			}
+
+			EndPanel();
+
+			ImGui::Spacing();
+
+			BeginPanel("Data Tables", nullptr);
+
+			CustomToggle("Player Table", &PlayerTable::bMasterToggle);
+			CustomToggle("Item Table", &ItemTable::bMasterToggle);
+
+			EndPanel();
+		}
+		ImGui::EndChild();
+	}
+	ImGui::EndChild();
+
+	ImGui::Spacing();
+
+	// ========================================================================
+	// BOTTOM ROW: Item & World Ranges with Colors (3 columns)
+	// ========================================================================
+	ImGui::BeginChild("WorldBottomRow", ImVec2(0, 0), false);
+	{
+		float rangeColWidth = (ImGui::GetContentRegionAvail().x - 24.0f) / 3.0f;
+
+		// Column 1: High & Medium Value Items
+		ImGui::BeginChild("RangeCol1", ImVec2(rangeColWidth, 0), false);
+		{
+			BeginPanel("Item Ranges", "By value tier with colors");
+
+			using namespace ESPSettings::RenderRange;
+
+			// High Value with color picker
+			ImGui::Text("High Value (>100k)");
+			ImGui::SameLine(ImGui::GetContentRegionAvail().x - 30.0f);
+			float highCol[4] = { ItemHighColor.Value.x, ItemHighColor.Value.y, ItemHighColor.Value.z, ItemHighColor.Value.w };
+			if (ImGui::ColorEdit4("##HighCol", highCol, ImGuiColorEditFlags_NoInputs | ImGuiColorEditFlags_NoLabel))
+				ItemHighColor = ImColor(highCol[0], highCol[1], highCol[2], highCol[3]);
+			ImGui::SetNextItemWidth(-1);
+			ImGui::SliderFloat("##HighRange", &fItemHighRange, 10.0f, 500.0f, "%.0f m");
+
+			ImGui::Spacing();
+
+			// Medium Value with color picker
+			ImGui::Text("Medium (50k-100k)");
+			ImGui::SameLine(ImGui::GetContentRegionAvail().x - 30.0f);
+			float medCol[4] = { ItemMediumColor.Value.x, ItemMediumColor.Value.y, ItemMediumColor.Value.z, ItemMediumColor.Value.w };
+			if (ImGui::ColorEdit4("##MedCol", medCol, ImGuiColorEditFlags_NoInputs | ImGuiColorEditFlags_NoLabel))
+				ItemMediumColor = ImColor(medCol[0], medCol[1], medCol[2], medCol[3]);
+			ImGui::SetNextItemWidth(-1);
+			ImGui::SliderFloat("##MedRange", &fItemMediumRange, 10.0f, 300.0f, "%.0f m");
+
+			EndPanel();
+		}
+		ImGui::EndChild();
+
+		ImGui::SameLine();
+
+		// Column 2: Low & Rest Value Items
+		ImGui::BeginChild("RangeCol2", ImVec2(rangeColWidth, 0), false);
+		{
+			BeginPanel("Low Value Items", nullptr);
+
+			using namespace ESPSettings::RenderRange;
+
+			// Low Value with color picker
+			ImGui::Text("Low (20k-50k)");
+			ImGui::SameLine(ImGui::GetContentRegionAvail().x - 30.0f);
+			float lowCol[4] = { ItemLowColor.Value.x, ItemLowColor.Value.y, ItemLowColor.Value.z, ItemLowColor.Value.w };
+			if (ImGui::ColorEdit4("##LowCol", lowCol, ImGuiColorEditFlags_NoInputs | ImGuiColorEditFlags_NoLabel))
+				ItemLowColor = ImColor(lowCol[0], lowCol[1], lowCol[2], lowCol[3]);
+			ImGui::SetNextItemWidth(-1);
+			ImGui::SliderFloat("##LowRange", &fItemLowRange, 10.0f, 200.0f, "%.0f m");
+
+			ImGui::Spacing();
+
+			// Rest Value with color picker
+			ImGui::Text("Rest (<20k)");
+			ImGui::SameLine(ImGui::GetContentRegionAvail().x - 30.0f);
+			float restCol[4] = { ItemRestColor.Value.x, ItemRestColor.Value.y, ItemRestColor.Value.z, ItemRestColor.Value.w };
+			if (ImGui::ColorEdit4("##RestCol", restCol, ImGuiColorEditFlags_NoInputs | ImGuiColorEditFlags_NoLabel))
+				ItemRestColor = ImColor(restCol[0], restCol[1], restCol[2], restCol[3]);
+			ImGui::SetNextItemWidth(-1);
+			ImGui::SliderFloat("##RestRange", &fItemRestRange, 5.0f, 100.0f, "%.0f m");
+
+			EndPanel();
+		}
+		ImGui::EndChild();
+
+		ImGui::SameLine();
+
+		// Column 3: Container/Exfil Range & Reset
+		ImGui::BeginChild("RangeCol3", ImVec2(0, 0), false);
+		{
+			BeginPanel("World Ranges", nullptr);
+
+			using namespace ESPSettings::RenderRange;
+
+			// Container with color picker
+			ImGui::Text("Containers");
+			ImGui::SameLine(ImGui::GetContentRegionAvail().x - 30.0f);
+			float contCol[4] = { ContainerColor.Value.x, ContainerColor.Value.y, ContainerColor.Value.z, ContainerColor.Value.w };
+			if (ImGui::ColorEdit4("##ContCol", contCol, ImGuiColorEditFlags_NoInputs | ImGuiColorEditFlags_NoLabel))
+				ContainerColor = ImColor(contCol[0], contCol[1], contCol[2], contCol[3]);
+			ImGui::SetNextItemWidth(-1);
+			ImGui::SliderFloat("##ContainerRange", &fContainerRange, 5.0f, 100.0f, "%.0f m");
+
+			ImGui::Spacing();
+
+			// Exfil with color picker
+			ImGui::Text("Exfils");
+			ImGui::SameLine(ImGui::GetContentRegionAvail().x - 30.0f);
+			float exfilCol[4] = { ExfilColor.Value.x, ExfilColor.Value.y, ExfilColor.Value.z, ExfilColor.Value.w };
+			if (ImGui::ColorEdit4("##ExfilCol", exfilCol, ImGuiColorEditFlags_NoInputs | ImGuiColorEditFlags_NoLabel))
+				ExfilColor = ImColor(exfilCol[0], exfilCol[1], exfilCol[2], exfilCol[3]);
+			ImGui::SetNextItemWidth(-1);
+			ImGui::SliderFloat("##ExfilRange", &fExfilRange, 50.0f, 1000.0f, "%.0f m");
+
+			ImGui::Spacing();
+			ImGui::Separator();
+			ImGui::Spacing();
+
+			if (ImGui::Button("Reset to Defaults", ImVec2(-1, 0)))
+			{
+				// Player colors
+				PMCColor = ImColor(255, 0, 0);
+				PlayerScavColor = ImColor(255, 165, 0);
+				BossColor = ImColor(255, 0, 255);
+				AIColor = ImColor(255, 255, 0);
+				// Player ranges
+				fPMCRange = 500.0f;
+				fPlayerScavRange = 400.0f;
+				fBossRange = 600.0f;
+				fAIRange = 300.0f;
+				// Item colors
+				ItemHighColor = ImColor(255, 215, 0);
+				ItemMediumColor = ImColor(186, 85, 211);
+				ItemLowColor = ImColor(0, 150, 150);
+				ItemRestColor = ImColor(108, 150, 150);
+				// Item ranges
+				fItemHighRange = 100.0f;
+				fItemMediumRange = 75.0f;
+				fItemLowRange = 50.0f;
+				fItemRestRange = 25.0f;
+				// Container
+				ContainerColor = ImColor(0, 255, 255);
+				fContainerRange = 20.0f;
+				// Exfil
+				ExfilColor = ImColor(0, 255, 0);
+				fExfilRange = 500.0f;
+			}
+
+			EndPanel();
+		}
+		ImGui::EndChild();
 	}
 	ImGui::EndChild();
 }

@@ -2,6 +2,7 @@
 #include "CExfilPoint.h"
 #include "Game/Offsets/Offsets.h"
 #include "GUI/Color Picker/Color Picker.h"
+#include "GUI/ESP/ESPSettings.h"
 #include "Game/Data/ExfilNameMap.h"
 #include "GUI/Radar/Radar2D.h"
 #include "Game/EFT.h"
@@ -179,7 +180,7 @@ const ImColor& CExfilPoint::GetRadarColor() const
 
 const ImColor& CExfilPoint::GetFuserColor() const
 {
-	return ColorPicker::Fuser::m_ExfilColor;
+	return ESPSettings::RenderRange::ExfilColor;
 }
 
 const std::string& CExfilPoint::GetDisplayName() const

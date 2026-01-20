@@ -34,3 +34,9 @@ void CLocalGameWorld::HandlePlayerAllocations(DMA_Connection* Conn)
 	m_pRegisteredPlayers->UpdateBaseAddresses(Conn);
 	m_pRegisteredPlayers->HandlePlayerAllocations(Conn);
 }
+
+void CLocalGameWorld::RefreshLoot(DMA_Connection* Conn)
+{
+	if (m_pLootList)
+		m_pLootList->RefreshLoot(Conn);
+}
