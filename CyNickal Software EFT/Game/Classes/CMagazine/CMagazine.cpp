@@ -1,6 +1,8 @@
 #include "pch.h"
 #include "CMagazine.h"
 #include "Game/Offsets/Offsets.h"
+#include "DMA/DMA.h"
+#include "Game/EFT.h"
 #include "Database/Database.h"
 
 CMagazine::CMagazine(uintptr_t MagazineSlotAddress) : CBaseEntity(MagazineSlotAddress)
@@ -137,6 +139,48 @@ void CMagazine::QuickFinalize()
 {
 	if (m_BytesRead != sizeof(uint32_t))
 		SetInvalid();
+}
+
+void CMagazine::CompleteUpdate()
+{
+	auto Conn = DMA_Connection::GetInstance();
+	auto PID = EFT::GetProcess().GetPID();
+
+	auto vmsh = VMMDLL_Scatter_Initialize(Conn->GetHandle(), PID, VMMDLL_FLAG_NOCACHE);
+
+	PrepareRead_1(vmsh);
+	VMMDLL_Scatter_Execute(vmsh);
+	VMMDLL_Scatter_Clear(vmsh, PID, VMMDLL_FLAG_NOCACHE);
+
+	PrepareRead_2(vmsh);
+	VMMDLL_Scatter_Execute(vmsh);
+	VMMDLL_Scatter_Clear(vmsh, PID, VMMDLL_FLAG_NOCACHE);
+
+	PrepareRead_3(vmsh);
+	VMMDLL_Scatter_Execute(vmsh);
+	VMMDLL_Scatter_Clear(vmsh, PID, VMMDLL_FLAG_NOCACHE);
+
+	PrepareRead_4(vmsh);
+	VMMDLL_Scatter_Execute(vmsh);
+	VMMDLL_Scatter_Clear(vmsh, PID, VMMDLL_FLAG_NOCACHE);
+
+	PrepareRead_5(vmsh);
+	VMMDLL_Scatter_Execute(vmsh);
+	VMMDLL_Scatter_Clear(vmsh, PID, VMMDLL_FLAG_NOCACHE);
+
+	PrepareRead_6(vmsh);
+	VMMDLL_Scatter_Execute(vmsh);
+	VMMDLL_Scatter_Clear(vmsh, PID, VMMDLL_FLAG_NOCACHE);
+
+	PrepareRead_7(vmsh);
+	VMMDLL_Scatter_Execute(vmsh);
+	VMMDLL_Scatter_Clear(vmsh, PID, VMMDLL_FLAG_NOCACHE);
+
+	PrepareRead_8(vmsh);
+	VMMDLL_Scatter_Execute(vmsh);
+	VMMDLL_Scatter_CloseHandle(vmsh);
+
+	Finalize();
 }
 
 const std::string& CMagazine::GetAmmoName() const

@@ -1,9 +1,12 @@
 #pragma once
+#pragma once
+
 #include <cstddef>
+#include <cstdint>
 #include "Vector.h"
 // Created with ReClass.NET 1.2 by KN4CK3R
 
-class CLocalGameWorld
+class CLocalGameWorldLegacy
 {
 public:
 	char pad_0000[192]; //0x0000

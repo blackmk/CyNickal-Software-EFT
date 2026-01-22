@@ -34,7 +34,27 @@ build_output.txt
 Cleanup.bat
 nul
 
-## Claude/OpenCode local settings ##
+## AI Tools & Development ##
+# Claude Code / OpenCode
 .claude/settings.local.json
+.claude/plans/
+.claude/conversations/
+.claude/cache/
+
+# Other AI assistants
+.cursor/
+.windsurf/
+.aider/
+.continue/
+
+# Development backup/temp files
+*.backup
+*_New.*
+*_Old.*
+*_Temp.*
 quick_build.bat
 quick_build.ps1
+
+# CodeRabbit
+coderabbit_*.sh
+coderabbit_*.html

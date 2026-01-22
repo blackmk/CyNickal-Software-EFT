@@ -187,8 +187,7 @@ void Keybinds::OnDMAFrame(DMA_Connection* Conn)
 	if (PlayerRefresh.IsActive(Conn) && EFT::IsGameWorldInitialized())
 		EFT::GetRegisteredPlayers().FullUpdate(Conn);
 
-	if (Aimbot.IsActive(Conn, true))
-		Aimbot::OnDMAFrame(Conn);
+	Aimbot::OnDMAFrame(Conn);
 
 	if (FleaBot.IsActive(Conn))
 		FleaBot::bMasterToggle = !FleaBot::bMasterToggle;

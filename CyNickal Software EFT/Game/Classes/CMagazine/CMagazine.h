@@ -17,6 +17,7 @@ public:
 	void Finalize();
 	void QuickRead(VMMDLL_SCATTER_HANDLE vmsh);
 	void QuickFinalize();
+	void CompleteUpdate();
 
 	const std::string& GetAmmoName() const;
 

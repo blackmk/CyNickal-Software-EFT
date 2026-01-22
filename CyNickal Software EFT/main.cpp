@@ -332,11 +332,13 @@ static int RunApp()
 		{
 			std::string msg = std::string("FRAME EXCEPTION (C++): ") + e.what();
 			LogLine(msg.c_str());
+			bRunning = false;
 			break;
 		}
 		catch (...)
 		{
 			LogLine("FRAME EXCEPTION (C++ unknown)");
+			bRunning = false;
 			break;
 		}
 #else 

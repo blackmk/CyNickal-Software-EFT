@@ -12,6 +12,9 @@ void CHeldItem::PrepareRead_1(VMMDLL_SCATTER_HANDLE vmsh, EPlayerType PlayerType
 		VMMDLL_Scatter_PrepareEx(vmsh, m_EntityAddress + Offsets::CHandsController::pItem, sizeof(uintptr_t), reinterpret_cast<BYTE*>(&m_HeldItemAddress), reinterpret_cast<DWORD*>(&m_BytesRead));
 	else if (PlayerType == EPlayerType::eObservedPlayer)
 		VMMDLL_Scatter_PrepareEx(vmsh, m_EntityAddress + Offsets::CObservedPlayerHands::pItem, sizeof(uintptr_t), reinterpret_cast<BYTE*>(&m_HeldItemAddress), reinterpret_cast<DWORD*>(&m_BytesRead));
+
+	if (m_HeldItemAddress)
+		VMMDLL_Scatter_PrepareEx(vmsh, m_HeldItemAddress + Offsets::CItem::pMagslot, sizeof(uintptr_t), reinterpret_cast<BYTE*>(&m_MagazineAddress), nullptr);
 }
 
 void CHeldItem::PrepareRead_2(VMMDLL_SCATTER_HANDLE vmsh)
@@ -141,20 +144,40 @@ void CHeldItem::QuickFinalize()
 
 	if (IsInvalid()) return;
 
-	if (m_HeldItemAddress == m_PreviousHeldItemAddress)
-		return;
-
 	if (m_HeldItemAddress == 0)
 	{
 		m_pHeldItem = nullptr;
+		m_pMagazine = nullptr;
 		m_PreviousHeldItemAddress = 0;
 		return;
 	}
 
-	m_PreviousHeldItemAddress = m_HeldItemAddress;
+	if (m_HeldItemAddress != m_PreviousHeldItemAddress)
+	{
+		m_PreviousHeldItemAddress = m_HeldItemAddress;
+		m_pHeldItem = std::make_unique<CItem>(m_HeldItemAddress);
+		m_pHeldItem->CompleteUpdate();
+	}
 
-	m_pHeldItem = std::make_unique<CItem>(m_HeldItemAddress);
-	m_pHeldItem->CompleteUpdate();
+	if (!m_MagazineAddress)
+	{
+		m_pMagazine = nullptr;
+		return;
+	}
+
+	if (!m_pMagazine || m_pMagazine->m_EntityAddress != m_MagazineAddress)
+	{
+		m_pMagazine = std::make_unique<CMagazine>(m_MagazineAddress);
+		m_pMagazine->CompleteUpdate();
+		return;
+	}
+
+	if (m_pMagazine)
+	{
+		m_pMagazine->QuickFinalize();
+		if (m_pMagazine->IsInvalid())
+			m_pMagazine = nullptr;
+	}
 }
 
 void CHeldItem::CompleteUpdate(EPlayerType PlayerType)

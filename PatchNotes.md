@@ -6,6 +6,90 @@ This document tracks changes made to the codebase by AI agents and developers. P
 
 <!-- Add new entries below this line -->
 
+## [Date: 2026-01-22] - Major Radar2D Architecture Refactor (Lum0s-Inspired)
+
+**Agent:** Claude Code
+**Focus:** C++ Architecture
+
+### Summary
+Complete architectural overhaul of Radar2D system, reducing Radar2D.cpp from 1513 lines to 395 lines (74% reduction). Implemented modular design with interfaces, singletons, and separation of concerns inspired by Lum0s-EFT-DMA-Radar patterns.
+
+### Changes
+- **Added:** `GUI/Radar/Core/IRadarMap.h` - Abstract map interface
+- **Added:** `GUI/Radar/Core/IRadarEntity.h` - Abstract entity interface for polymorphic rendering
+- **Added:** `GUI/Radar/Core/RadarMapManager.h/.cpp` - Singleton map loader with lazy loading and LRU cache
+- **Added:** `GUI/Radar/Core/RadarRenderer.h/.cpp` - Centralized rendering engine with layer dimming
+- **Added:** `GUI/Radar/Core/RadarViewport.h` - Viewport/camera management (zoom, pan, params)
+- **Added:** `GUI/Radar/Maps/EftMap.h/.cpp` - Concrete IRadarMap implementation
+- **Added:** `GUI/Radar/Maps/MapTextureFactory.h/.cpp` - D3D11 texture creation from SVG with 4x pre-rasterization
+- **Added:** `GUI/Radar/Entities/RadarPlayerEntity.h/.cpp` - Player adapter implementing IRadarEntity
+- **Added:** `GUI/Radar/Entities/RadarLootEntity.h/.cpp` - Loot adapter implementing IRadarEntity
+- **Added:** `GUI/Radar/Entities/RadarExfilEntity.h/.cpp` - Exfil adapter implementing IRadarEntity
+- **Added:** `GUI/Radar/Entities/RadarQuestEntity.h/.cpp` - Quest marker adapter implementing IRadarEntity
+- **Added:** `GUI/Radar/RadarSettings.h` - Centralized settings struct with serialization
+- **Modified:** `GUI/Radar/Radar2D.h` - Refactored to facade pattern (193 → 136 lines)
+- **Modified:** `GUI/Radar/Radar2D.cpp` - Refactored to thin delegation layer (1513 → 395 lines)
+- **Modified:** `CyNickal Software EFT.vcxproj` - Added 9 new .cpp files and 13 new .h files to project
+- **Backward Compatibility:** Maintained through static reference aliases in Radar2D.h (Config.cpp unchanged)
+
+### Architecture Improvements
+1. **Interfaces:** `IRadarMap` and `IRadarEntity` enable polymorphism and testability
+2. **Singleton Pattern:** `RadarMapManager` centralizes map lifecycle with thread-safe caching
+3. **Facade Pattern:** `Radar2D` now delegates to specialized subsystems (manager, renderer, viewport)
+4. **Adapter Pattern:** Entity classes wrap game objects for uniform rendering pipeline
+5. **Pre-Rasterization:** SVG → bitmap at 4x scale during load (major performance win)
+6. **Layer Dimming:** Front layer full opacity, lower layers 50% dimmed (Lum0s strategy)
+
+### Performance Benefits
+- Pre-rasterized textures cached in memory for instant reuse
+- LRU cache with max 3 loaded maps to limit memory usage
+- Distance-based entity culling before iteration
+- Cleaner separation allows future FPS capping
+
+### Maintainability Benefits
+- Single Responsibility Principle enforced across all classes
+- 74% code reduction in main file (1513 → 395 lines)
+- Testable components through interface abstraction
+- Easy to extend (new entity types, map formats, rendering strategies)
+
+### Technical Notes
+- Fixed CPlayer.h include conflict by using CBaseEFTPlayer base class
+- Resolved circular dependencies with forward declarations
+- Fixed variant<object> vs variant<pointer> mismatch using std::visit
+- NanoSVG include path corrected for Maps/ subdirectory
+
+### Verification
+- [x] Build succeeded (0 errors, 0 warnings)
+- [x] All 18 new files added to project
+- [x] Backward compatibility maintained (Config.cpp unchanged)
+- [x] Patch note recorded
+- [ ] Verified in-game (runtime testing pending)
+
+### References
+- **Inspiration:** `Inspiration/Lum0s-EFT-DMA-Radar.md`
+- **Plan:** `.claude/plans/cozy-booping-shore.md`
+
+---
+
+## [Date: 2026-01-22] - Stabilize Random Bone Ammo Tracking
+
+**Agent:** OpenCode
+**Focus:** C++
+
+### Changes
+- **Modified:** `Game/Classes/CFirearmManager/CFirearmManager.cpp` - Track ammo validity, sum ammo stacks, and include chambered rounds for shot detection.
+- **Modified:** `Game/Classes/CFirearmManager/CFirearmManager.h` - Return ammo read validity and track last known state.
+- **Modified:** `Game/Classes/CMagazine/CMagazine.cpp` - Added full refresh helper for magazine state.
+- **Modified:** `Game/Classes/CMagazine/CMagazine.h` - Exposed `CompleteUpdate()` for magazine refreshes.
+- **Modified:** `Game/Classes/CHeldItem/CHeldItem.cpp` - Refresh magazine pointer during quick updates and rebuild when it changes.
+- **Modified:** `GUI/Aimbot/Aimbot.cpp` - Reroll random bone on real ammo drops, reset state when aim key is released, and allow ammo tracking even if fireport is invalid.
+- **Modified:** `GUI/Keybinds/Keybinds.cpp` - Ensure aimbot tick runs each frame for state cleanup.
+
+### Verification
+- [x] Build succeeded (0 errors)
+- [x] Patch note recorded after the successful build
+- [ ] Verified in Debug mode / In-game
+
 ## [Date: 2026-01-22] - Templated Player Read Stages
 
 **Agent:** OpenCode

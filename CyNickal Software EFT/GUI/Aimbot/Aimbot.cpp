@@ -110,7 +110,7 @@ static void UpdateRandomBoneState(bool bAimKeyActive)
 	}
 
 	auto* pFirearm = pLocal->GetFirearmManager();
-	if (!pFirearm || !pFirearm->IsValid())
+	if (!pFirearm || !pFirearm->GetHandsControllerAddress())
 	{
 		// Full state reset to ensure clean re-initialization
 		Aimbot::bRandomBoneInitialized = false;
@@ -119,15 +119,14 @@ static void UpdateRandomBoneState(bool bAimKeyActive)
 		return;
 	}
 
-	pFirearm->RefreshAmmoCount();
-
+	bool ammoValid = pFirearm->RefreshAmmoCount();
 	uintptr_t handsAddr = pFirearm->GetHandsControllerAddress();
 	uint32_t currentAmmo = pFirearm->GetCurrentAmmoCount();
 
-	// Validate ammo count - ignore clearly invalid values (0 = read error, >200 = garbage)
+	// Validate ammo count - ignore clearly invalid values (>200 = garbage)
 	// This prevents spurious shot detection from corrupted memory reads
 	constexpr uint32_t MAX_REALISTIC_MAG_SIZE = 200;
-	if (currentAmmo == 0 || currentAmmo > MAX_REALISTIC_MAG_SIZE)
+	if (!ammoValid || currentAmmo > MAX_REALISTIC_MAG_SIZE)
 	{
 		// Don't update ammo tracking with invalid values
 		// Keep existing bone, skip shot detection this frame
@@ -481,6 +480,12 @@ void Aimbot::RenderFOVCircle(const ImVec2& WindowPos, ImDrawList* DrawList)
 	if (!bNeedsAimData)
 		return;
 
+	auto gameWorld = EFT::GetGameWorld();
+	if (!gameWorld || !gameWorld->m_pRegisteredPlayers)
+		return;
+
+	auto* registeredPlayers = gameWorld->m_pRegisteredPlayers.get();
+
 	ImVec2 AimlineScreenPos = GetAimlineScreenPosition();
 
 	// Aim point dot - requires aim key active
@@ -523,7 +528,7 @@ void Aimbot::RenderFOVCircle(const ImVec2& WindowPos, ImDrawList* DrawList)
 	// Trajectory - uses shouldDrawVisuals (shows without aim key when bOnlyOnAim is off)
 	if (bEnablePrediction && bShowTrajectory && shouldDrawVisuals)
 	{
-		auto* pLocalPlayer = EFT::GetRegisteredPlayers().GetLocalPlayer();
+		auto* pLocalPlayer = registeredPlayers->GetLocalPlayer();
 		if (pLocalPlayer && !pLocalPlayer->IsInvalid())
 		{
 			auto* pFirearm = pLocalPlayer->GetFirearmManager();
@@ -565,7 +570,7 @@ void Aimbot::RenderFOVCircle(const ImVec2& WindowPos, ImDrawList* DrawList)
 	// Aimline - uses shouldDrawVisuals (shows without aim key when bOnlyOnAim is off)
 	if (bDrawAimline && shouldDrawVisuals)
 	{
-		auto* pLocalPlayer = EFT::GetRegisteredPlayers().GetLocalPlayer();
+		auto* pLocalPlayer = registeredPlayers->GetLocalPlayer();
 		if (!pLocalPlayer || pLocalPlayer->IsInvalid())
 			return;
 
@@ -588,7 +593,7 @@ void Aimbot::RenderFOVCircle(const ImVec2& WindowPos, ImDrawList* DrawList)
 			{
 				float targetDistance = 0.0f;
 				{
-					auto& PlayerList = EFT::GetRegisteredPlayers();
+					auto& PlayerList = *registeredPlayers;
 					std::scoped_lock lk(PlayerList.m_Mut);
 					ImVec2 AimOrigin = bUseFireportAiming ? AimlineScreenPos : Fuser::GetCenterScreen();
 					float bestScore = std::numeric_limits<float>::max();
@@ -710,7 +715,11 @@ ImVec2 GetAimlineScreenPosition()
 
 	auto CenterScreen = Fuser::GetCenterScreen();
 
-	auto* pLocalPlayer = EFT::GetRegisteredPlayers().GetLocalPlayer();
+	auto gameWorld = EFT::GetGameWorld();
+	if (!gameWorld || !gameWorld->m_pRegisteredPlayers)
+		return CenterScreen;
+
+	auto* pLocalPlayer = gameWorld->m_pRegisteredPlayers->GetLocalPlayer();
 	if (!pLocalPlayer || pLocalPlayer->IsInvalid())
 		return CenterScreen;
 
@@ -773,11 +782,12 @@ void Aimbot::SendDeviceMove(int dx, int dy)
 void Aimbot::OnDMAFrame(DMA_Connection* Conn)
 {
 	bool bKeyActive = Keybinds::Aimbot.IsActive(Conn, true);
-	if (!bKeyActive)
+	bool bShouldAim = bKeyActive && bMasterToggle;
+	if (!bShouldAim)
+	{
+		UpdateRandomBoneState(false);
 		return;
-
-	if (!bMasterToggle)
-		return;
+	}
 
 	bool bDeviceConnected = MyMakcu::m_Device.isConnected() || KmboxNet::KmboxNetController::IsConnected();
 	if (!c_keys::IsInitialized() || !bDeviceConnected)
@@ -787,7 +797,7 @@ void Aimbot::OnDMAFrame(DMA_Connection* Conn)
 
 	RegisteredPlayers.QuickUpdate(Conn);
 	CameraList::QuickUpdateNecessaryCameras(Conn);
-	UpdateRandomBoneState(bKeyActive);
+	UpdateRandomBoneState(bShouldAim);
 
 	ImVec2 AimOrigin = bUseFireportAiming ? GetAimlineScreenPosition() : Fuser::GetCenterScreen();
 
@@ -895,5 +905,3 @@ uintptr_t Aimbot::FindBestTarget(const ImVec2& AimOrigin)
 
 	return BestTarget;
 }
-
-

@@ -3,24 +3,25 @@
 #include "GUI/Radar/MapParams.h"
 #include "GUI/Radar/CoordTransform.h"
 #include "GUI/Radar/PlayerFocus.h"
+#include "GUI/Radar/RadarSettings.h"
+#include "GUI/Radar/Core/RadarMapManager.h"
+#include "GUI/Radar/Core/RadarRenderer.h"
+#include "GUI/Radar/Core/RadarViewport.h"
+#include "GUI/Radar/Core/IRadarEntity.h"
 #include "Game/Classes/Vector.h"
-#include "Game/Classes/Quest/QuestLocation.h"
 #include <string>
+#include <memory>
 #include <vector>
-#include <unordered_map>
 #include <d3d11.h>
-#include <algorithm>
 
 // Forward declarations
-class CPlayer;
-class CObservedLootItem;
-class CExfilPoint;
 class CRegisteredPlayers;
 class CLootList;
 class CExfilController;
 struct ID3D11ShaderResourceView;
 
 // Rasterized map layer texture
+// NOTE: Keep this for backward compatibility with existing code
 struct MapLayerTexture
 {
 	ID3D11ShaderResourceView* textureView = nullptr;
@@ -31,109 +32,74 @@ struct MapLayerTexture
 	const EftMapLayer* layer = nullptr;  // Layer config this texture belongs to
 };
 
-// Loaded map with all layer textures
-struct LoadedMap
-{
-	EftMapConfig config;
-	std::vector<MapLayerTexture> layers;
-	std::string id;
-	
-	// Get the base layer (first layer, typically the main map)
-	const MapLayerTexture* GetBaseLayer() const
-	{
-		if (layers.empty()) return nullptr;
-		return &layers[0];
-	}
-	
-	// Get visible layers for a given player height
-	std::vector<const MapLayerTexture*> GetVisibleLayers(float playerHeight) const
-	{
-		std::vector<const MapLayerTexture*> visible;
-		for (const auto& layer : layers)
-		{
-			// Base layers (terrain/foundation) are always included
-			if (!layer.layer || (!layer.layer->minHeight.has_value() && !layer.layer->maxHeight.has_value()))
-			{
-				visible.push_back(&layer);
-				continue;
-			}
-			
-			// Non-base layers must be in range
-			if (layer.layer->IsHeightInRange(playerHeight))
-			{
-				visible.push_back(&layer);
-			}
-		}
-		return visible;
-	}
-};
-
-// Main 2D Radar class - handles rendering the radar map with entity overlays
+// Main 2D Radar class - simplified facade over new architecture
+// Now delegates to:
+//   - RadarMapManager for map loading/caching
+//   - RadarRenderer for rendering
+//   - RadarViewport for zoom/pan
 class Radar2D
 {
 public:
 	// Initialize the radar system
 	static bool Initialize(ID3D11Device* device);
-	
+
 	// Cleanup resources
 	static void Cleanup();
-	
+
 	// Main render function - standalone window (legacy, for pop-out mode)
 	static void Render();
-	
+
 	// Embedded render function - renders radar into current ImGui region
 	// Call this from within a BeginChild/EndChild or content area
 	static void RenderEmbedded();
-	
+
 	// Settings panel - call from settings menu
 	static void RenderSettings();
-	
+
 	// Set current map by Tarkov map ID (e.g., "bigmap" for Customs)
 	static void SetCurrentMap(const std::string& mapId);
-	
+
 	// Check if radar is initialized
 	static bool IsInitialized() { return s_initialized; }
-	
+
 	// Get current map ID for display
-	static const std::string& GetCurrentMapId() { return s_currentMapId; }
-	
+	static const std::string& GetCurrentMapId();
+
 	// Get local player position for status display
 	static const Vector3& GetLocalPlayerPos() { return s_localPlayerPos; }
-	
+
 	// Get current floor name for status display
 	static std::string GetCurrentFloorName();
 
 public:
-	// Settings (exposed for UI)
-	static inline bool bEnabled = true;
-	static inline bool bShowPlayers = true;
-	static inline bool bShowLoot = true;
-	static inline bool bShowExfils = true;
-	static inline bool bShowLocalPlayer = true;
-	static inline bool bShowMapImage = true;
-	static inline bool bAutoFloorSwitch = true;
-	static inline bool bAutoMap = true;
-	static inline bool bShowQuestMarkers = true;  // Phase 3: Quest markers
-	
-	// Zoom: 1-200, where 100 = 1:1, lower = zoomed in, higher = zoomed out
-	static inline int iZoom = 100;
-	static constexpr int MIN_ZOOM = 1;
-	static constexpr int MAX_ZOOM = 200;
-	
-	// Icon sizes
-	static inline float fPlayerIconSize = 8.0f;
-	static inline float fLootIconSize = 4.0f;
-	static inline float fExfilIconSize = 10.0f;
-	
-	// Current floor (for multi-level maps)
-	static inline int iCurrentFloor = 0;
+	// Settings (centralized in RadarSettings struct)
+	static inline RadarSettings Settings;
 
-	// === Widget and Focus Settings (Phase 2) ===
-	static inline bool bShowGroupLines = true;       // Draw lines between group members
-	static inline bool bShowFocusHighlight = true;   // Highlight focused player
-	static inline bool bShowHoverTooltip = true;     // Show tooltip on hover
-	static inline float fMaxPlayerDistance = 500.0f; // Max distance for player rendering
-	static inline float fMaxLootDistance = 100.0f;   // Max distance for loot rendering
+	// Backward compatibility aliases (deprecated - use Settings instead)
+	// These delegate to Settings for compatibility with existing code
+	static inline bool& bEnabled = Settings.bEnabled;
+	static inline bool& bShowPlayers = Settings.bShowPlayers;
+	static inline bool& bShowLoot = Settings.bShowLoot;
+	static inline bool& bShowExfils = Settings.bShowExfils;
+	static inline bool& bShowLocalPlayer = Settings.bShowLocalPlayer;
+	static inline bool& bShowMapImage = Settings.bShowMapImage;
+	static inline bool& bAutoFloorSwitch = Settings.bAutoFloorSwitch;
+	static inline bool& bAutoMap = Settings.bAutoMap;
+	static inline bool& bShowQuestMarkers = Settings.bShowQuestMarkers;
+	static inline int& iZoom = Settings.iZoom;
+	static inline float& fPlayerIconSize = Settings.fPlayerIconSize;
+	static inline float& fLootIconSize = Settings.fLootIconSize;
+	static inline float& fExfilIconSize = Settings.fExfilIconSize;
+	static inline int& iCurrentFloor = Settings.iCurrentFloor;
+	static inline bool& bShowGroupLines = Settings.bShowGroupLines;
+	static inline bool& bShowFocusHighlight = Settings.bShowFocusHighlight;
+	static inline bool& bShowHoverTooltip = Settings.bShowHoverTooltip;
+	static inline float& fMaxPlayerDistance = Settings.fMaxPlayerDistance;
+	static inline float& fMaxLootDistance = Settings.fMaxLootDistance;
+
+	// Zoom constants
+	static constexpr int MIN_ZOOM = RadarSettings::MIN_ZOOM;
+	static constexpr int MAX_ZOOM = RadarSettings::MAX_ZOOM;
 
 	// Hover state (set during render)
 	static inline uintptr_t HoveredEntityAddr = 0;
@@ -142,51 +108,29 @@ public:
 	static void RenderOverlayWidgets();
 
 private:
-	// Calculate map parameters for current frame
-	static MapParams CalculateMapParams(const Vector3& centerPos, float canvasWidth, float canvasHeight);
-	
-	// Draw the map background layers
-	static void DrawMapLayers(ImDrawList* drawList, float playerHeight, const MapParams& params, 
-	                          const ImVec2& canvasMin, const ImVec2& canvasMax);
-	
-	// Draw entities
-	static void DrawPlayers(ImDrawList* drawList, const MapParams& params,
-	                        const ImVec2& canvasMin, const ImVec2& canvasMax,
-	                        CRegisteredPlayers* playerList);
-	static void DrawLoot(ImDrawList* drawList, const MapParams& params,
-	                     const ImVec2& canvasMin, const ImVec2& canvasMax,
-	                     CLootList* lootList);
-	static void DrawExfils(ImDrawList* drawList, const MapParams& params,
-	                       const ImVec2& canvasMin, const ImVec2& canvasMax,
-	                       CExfilController* exfilController);
-	static void DrawQuestMarkers(ImDrawList* drawList, const MapParams& params,
-	                             const ImVec2& canvasMin, const ImVec2& canvasMax);
-	static void DrawLocalPlayer(ImDrawList* drawList, const MapParams& params, const ImVec2& canvasMin);
-	
+	// Gather entities from game state (adapter pattern)
+	static std::vector<IRadarEntity*> GatherPlayerEntities(CRegisteredPlayers* playerList);
+	static std::vector<IRadarEntity*> GatherLootEntities(CLootList* lootList);
+	static std::vector<IRadarEntity*> GatherExfilEntities(CExfilController* exfilController);
+	static std::vector<IRadarEntity*> GatherQuestEntities();
+
 	// Handle input (zoom, pan)
 	static void HandleInput();
-	
-	// Load map configuration from JSON
-	static bool LoadMapConfig(const std::string& jsonPath);
-	
-	// Load and rasterize SVG map layers
-	static bool LoadMapTextures(const std::string& mapId);
 
 private:
 	static inline bool s_initialized = false;
-	static inline ID3D11Device* s_device = nullptr;
-	
-	// Map data
-	static inline std::unordered_map<std::string, EftMapConfig> s_mapConfigs;
-	static inline std::unordered_map<std::string, LoadedMap> s_loadedMaps;
-	static inline LoadedMap* s_currentMap = nullptr;
-	static inline std::string s_currentMapId;
-	
+
+	// New architecture components
+	static inline std::unique_ptr<RadarRenderer> s_renderer;
+	static inline RadarViewport s_viewport;
+
+	// Entity storage (for lifetime management)
+	static inline std::vector<std::unique_ptr<IRadarEntity>> s_entityStorage;
+
 	// Window state
 	static inline ImVec2 s_windowPos = ImVec2(0, 0);
 	static inline ImVec2 s_windowSize = ImVec2(400, 400);
-	static inline ImVec2 s_panOffset = ImVec2(0, 0);  // For map panning
-	
+
 	// Reference position (local player)
 	static inline Vector3 s_localPlayerPos = Vector3(0, 0, 0);
 };

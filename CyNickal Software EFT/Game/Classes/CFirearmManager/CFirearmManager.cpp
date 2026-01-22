@@ -277,25 +277,28 @@ void CFirearmManager::Reset()
 	m_bHasFireport = false;
 	m_CurrentAmmoCount = 0;
 	m_LastAmmoUpdateMs = 0;
+	m_bAmmoCountValid = false;
 }
 
-void CFirearmManager::RefreshAmmoCount()
+bool CFirearmManager::RefreshAmmoCount()
 {
 	if (!m_HandsControllerAddress)
 	{
 		m_CurrentAmmoCount = 0;
 		m_LastAmmoUpdateMs = 0;
-		return;
+		m_bAmmoCountValid = false;
+		return false;
 	}
 
 	auto now = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch()).count();
 	if (m_LastAmmoUpdateMs != 0 && (now - m_LastAmmoUpdateMs) < 100)
-		return;
+		return m_bAmmoCountValid;
 
 	m_LastAmmoUpdateMs = now;
 
 	auto Conn = DMA_Connection::GetInstance();
 	auto PID = EFT::GetProcess().GetPID();
+	m_bAmmoCountValid = false;
 
 	// Read weapon item: HandsController + 0x70
 	uintptr_t weaponItem = 0;
@@ -305,7 +308,41 @@ void CFirearmManager::RefreshAmmoCount()
 	if (!weaponItem)
 	{
 		m_CurrentAmmoCount = 0;
-		return;
+		return false;
+	}
+
+	uint32_t chamberCount = 0;
+	uintptr_t chambersPtr = 0;
+	VMMDLL_MemReadEx(Conn->GetHandle(), PID, weaponItem + Offsets::CLootItemWeapon::Chambers,
+		reinterpret_cast<PBYTE>(&chambersPtr), sizeof(uintptr_t), nullptr, VMMDLL_FLAG_NOCACHE);
+
+	if (chambersPtr)
+	{
+		int chamberSlots = 0;
+		bool chamberCountReadOk = VMMDLL_MemReadEx(Conn->GetHandle(), PID, chambersPtr + Offsets::CUnityList::Count,
+			reinterpret_cast<PBYTE>(&chamberSlots), sizeof(int), nullptr, VMMDLL_FLAG_NOCACHE);
+
+		constexpr int MAX_CHAMBERS = 8;
+		if (chamberCountReadOk && chamberSlots > 0 && chamberSlots <= MAX_CHAMBERS)
+		{
+			uintptr_t arrayBase = chambersPtr + 0x20;
+			for (int i = 0; i < chamberSlots; ++i)
+			{
+				uintptr_t slotPtr = 0;
+				VMMDLL_MemReadEx(Conn->GetHandle(), PID, arrayBase + (static_cast<uintptr_t>(i) * sizeof(uintptr_t)),
+					reinterpret_cast<PBYTE>(&slotPtr), sizeof(uintptr_t), nullptr, VMMDLL_FLAG_NOCACHE);
+
+				if (!slotPtr)
+					continue;
+
+				uintptr_t containedItem = 0;
+				VMMDLL_MemReadEx(Conn->GetHandle(), PID, slotPtr + Offsets::CSlot::pContainedItem,
+					reinterpret_cast<PBYTE>(&containedItem), sizeof(uintptr_t), nullptr, VMMDLL_FLAG_NOCACHE);
+
+				if (containedItem)
+					++chamberCount;
+			}
+		}
 	}
 
 	// Read magazine slot: Weapon + 0xC8
@@ -316,7 +353,7 @@ void CFirearmManager::RefreshAmmoCount()
 	if (!magSlot)
 	{
 		m_CurrentAmmoCount = 0;
-		return;
+		return false;
 	}
 
 	// Read magazine item: Slot + 0x48
@@ -327,7 +364,7 @@ void CFirearmManager::RefreshAmmoCount()
 	if (!magItem)
 	{
 		m_CurrentAmmoCount = 0;
-		return;
+		return false;
 	}
 
 	// Read cartridges (StackSlot): Magazine + 0xA8
@@ -338,7 +375,7 @@ void CFirearmManager::RefreshAmmoCount()
 	if (!cartridges)
 	{
 		m_CurrentAmmoCount = 0;
-		return;
+		return false;
 	}
 
 	// Read items list: StackSlot + 0x18
@@ -349,34 +386,72 @@ void CFirearmManager::RefreshAmmoCount()
 	if (!itemsList)
 	{
 		m_CurrentAmmoCount = 0;
-		return;
+		return false;
 	}
 
-	// Navigate to actual ammo count following CMagazine pattern:
-	// itemsList + 0x10 -> listAddress, listAddress + 0x20 -> ammoItem, ammoItem + StackCount
-	uintptr_t listAddress = 0;
-	VMMDLL_MemReadEx(Conn->GetHandle(), PID, itemsList + 0x10,
-		reinterpret_cast<PBYTE>(&listAddress), sizeof(uintptr_t), nullptr, VMMDLL_FLAG_NOCACHE);
-
-	if (!listAddress)
+	int itemCount = 0;
+	bool countReadOk = VMMDLL_MemReadEx(Conn->GetHandle(), PID, itemsList + Offsets::CUnityList::Count,
+		reinterpret_cast<PBYTE>(&itemCount), sizeof(int), nullptr, VMMDLL_FLAG_NOCACHE);
+	if (!countReadOk)
 	{
 		m_CurrentAmmoCount = 0;
-		return;
+		return false;
 	}
 
-	uintptr_t ammoItem = 0;
-	VMMDLL_MemReadEx(Conn->GetHandle(), PID, listAddress + 0x20,
-		reinterpret_cast<PBYTE>(&ammoItem), sizeof(uintptr_t), nullptr, VMMDLL_FLAG_NOCACHE);
+	constexpr int MAX_AMMO_STACKS = 64;
+	if (itemCount <= 0)
+	{
+		m_CurrentAmmoCount = chamberCount;
+		m_bAmmoCountValid = true;
+		return true;
+	}
 
-	if (!ammoItem)
+	if (itemCount > MAX_AMMO_STACKS)
 	{
 		m_CurrentAmmoCount = 0;
-		return;
+		return false;
 	}
 
-	uint32_t stackCount = 0;
-	VMMDLL_MemReadEx(Conn->GetHandle(), PID, ammoItem + Offsets::CItem::StackCount,
-		reinterpret_cast<PBYTE>(&stackCount), sizeof(uint32_t), nullptr, VMMDLL_FLAG_NOCACHE);
+	uintptr_t arrayPtr = 0;
+	VMMDLL_MemReadEx(Conn->GetHandle(), PID, itemsList + Offsets::CUnityList::ArrayBase,
+		reinterpret_cast<PBYTE>(&arrayPtr), sizeof(uintptr_t), nullptr, VMMDLL_FLAG_NOCACHE);
 
-	m_CurrentAmmoCount = stackCount;
+	if (!arrayPtr)
+	{
+		m_CurrentAmmoCount = 0;
+		return false;
+	}
+
+	uint32_t totalStack = 0;
+	bool foundAmmo = false;
+	for (int i = 0; i < itemCount; ++i)
+	{
+		uintptr_t ammoItem = 0;
+		VMMDLL_MemReadEx(Conn->GetHandle(), PID, arrayPtr + 0x20 + (static_cast<uintptr_t>(i) * sizeof(uintptr_t)),
+			reinterpret_cast<PBYTE>(&ammoItem), sizeof(uintptr_t), nullptr, VMMDLL_FLAG_NOCACHE);
+
+		if (!ammoItem)
+			continue;
+
+		foundAmmo = true;
+
+		uint32_t stackCount = 0;
+		VMMDLL_MemReadEx(Conn->GetHandle(), PID, ammoItem + Offsets::CItem::StackCount,
+			reinterpret_cast<PBYTE>(&stackCount), sizeof(uint32_t), nullptr, VMMDLL_FLAG_NOCACHE);
+
+		totalStack += stackCount;
+	}
+
+	if (!foundAmmo)
+	{
+		m_CurrentAmmoCount = chamberCount;
+		if (chamberCount == 0)
+			return false;
+		m_bAmmoCountValid = true;
+		return true;
+	}
+
+	m_CurrentAmmoCount = totalStack + chamberCount;
+	m_bAmmoCountValid = true;
+	return true;
 }

@@ -21,7 +21,7 @@ public:
 	// Ammo tracking for random bone selection
 	uint32_t GetCurrentAmmoCount() const { return m_CurrentAmmoCount; }
 	uintptr_t GetHandsControllerAddress() const { return m_HandsControllerAddress; }
-	void RefreshAmmoCount();
+	bool RefreshAmmoCount();
 
 	// Ballistics
 	void UpdateBallistics();
@@ -47,4 +47,5 @@ private:
 	// Ammo count for random bone tracking
 	uint32_t m_CurrentAmmoCount{ 0 };
 	uint64_t m_LastAmmoUpdateMs{ 0 };
+	bool m_bAmmoCountValid{ false };
 };
