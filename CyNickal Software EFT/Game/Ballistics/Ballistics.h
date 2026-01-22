@@ -17,7 +17,7 @@ struct BallisticsInfo
 	{
 		return BulletMassGrams > 0.f && BulletMassGrams < 2000.f &&
 			BulletSpeed > 1.f && BulletSpeed < 2500.f &&
-			BallisticCoefficient >= 0.f && BallisticCoefficient <= 3.f &&
+			BallisticCoefficient > 0.f && BallisticCoefficient <= 3.f &&
 			BulletDiameterMillimeters > 0.f && BulletDiameterMillimeters <= 100.f;
 	}
 };

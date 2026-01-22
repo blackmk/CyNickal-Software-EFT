@@ -12,20 +12,22 @@ void DrawExfils::DrawAll(const ImVec2& WindowPos, ImDrawList* DrawList)
 	if (!bMasterToggle) return;
 
 	// Must be in raid with valid GameWorld and ExfilController
-	if (!EFT::IsInRaid() || !EFT::pGameWorld) return;
-	if (!EFT::pGameWorld->m_pExfilController) return;
+	auto gameWorld = EFT::GetGameWorld();
+	if (!EFT::IsInRaid() || !gameWorld) return;
+	if (!gameWorld->m_pExfilController || !gameWorld->m_pRegisteredPlayers) return;
 
-	auto& ExfilController = EFT::GetExfilController();
-	auto& PlayerList = EFT::GetRegisteredPlayers();
+	auto& ExfilController = *gameWorld->m_pExfilController;
+	auto& PlayerList = *gameWorld->m_pRegisteredPlayers;
 
 	std::scoped_lock Lock(ExfilController.m_ExfilMutex, PlayerList.m_Mut);
 
 	Vector2 ScreenPos{};
 
-	Vector3 LocalPlayerPos{};
+	// Early return if local player invalid - distance from origin is meaningless
 	auto LocalPlayer = PlayerList.GetLocalPlayer();
-	if (LocalPlayer && !LocalPlayer->IsInvalid())
-		LocalPlayerPos = LocalPlayer->GetBonePosition(EBoneIndex::Root);
+	if (!LocalPlayer || LocalPlayer->IsInvalid())
+		return;
+	Vector3 LocalPlayerPos = LocalPlayer->GetBonePosition(EBoneIndex::Root);
 
 	for (auto& Exfil : ExfilController.m_Exfils)
 	{

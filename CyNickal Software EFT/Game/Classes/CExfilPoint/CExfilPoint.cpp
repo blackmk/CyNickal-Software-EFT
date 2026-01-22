@@ -133,13 +133,14 @@ void CExfilPoint::Finalize()
 	
 	// Translate internal name to friendly display name using current map ID from GameWorld
 	std::string mapId;
-	if (EFT::pGameWorld)
+	auto gameWorld = EFT::GetGameWorld();
+	if (gameWorld)
 	{
 		auto& Proc = EFT::GetProcess();
 		DMA_Connection* Conn = DMA_Connection::GetInstance();
 		if (Conn && Conn->IsConnected())
 		{
-			auto mapPtr = Proc.ReadMem<uintptr_t>(Conn, EFT::pGameWorld->m_EntityAddress + Offsets::CLocalGameWorld::pMapName);
+			auto mapPtr = Proc.ReadMem<uintptr_t>(Conn, gameWorld->m_EntityAddress + Offsets::CLocalGameWorld::pMapName);
 			mapId = ReadUnityString(mapPtr);
 		}
 	}

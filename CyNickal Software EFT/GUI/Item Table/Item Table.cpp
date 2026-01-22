@@ -9,7 +9,8 @@ void ItemTable::Render()
 {
 	if (!bMasterToggle)	return;
 
-	if (!EFT::pGameWorld || !EFT::pGameWorld->m_pLootList || !EFT::pGameWorld->m_pRegisteredPlayers)
+	auto gameWorld = EFT::GetGameWorld();
+	if (!gameWorld || !gameWorld->m_pLootList || !gameWorld->m_pRegisteredPlayers)
 		return;
 
 	ImGui::Begin("Item Table", &bMasterToggle);
@@ -33,7 +34,7 @@ void ItemTable::Render()
 		static auto LastBusyPlayerLog = std::chrono::steady_clock::now();
 		static auto LastBusyLootLog = std::chrono::steady_clock::now();
 
-		auto& PlayerList = EFT::GetRegisteredPlayers();
+	auto& PlayerList = *gameWorld->m_pRegisteredPlayers;
 		auto PlayerLock = std::unique_lock<std::mutex>(PlayerList.m_Mut, std::try_to_lock);
 		if (!PlayerLock.owns_lock())
 		{
@@ -49,7 +50,7 @@ void ItemTable::Render()
 		}
 
 		auto LocalPlayerPos = PlayerList.GetLocalPlayerPosition();
-		auto& LootList = EFT::GetLootList();
+	auto& LootList = *gameWorld->m_pLootList;
 
 		auto LootLock = std::unique_lock<std::mutex>(LootList.m_ObservedItems.m_Mut, std::try_to_lock);
 		if (!LootLock.owns_lock())

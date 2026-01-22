@@ -5,6 +5,18 @@
 // Forward declaration
 class CObservedLootItem;
 
+// Helper struct for sorting loot - stores copies of needed data for thread safety
+struct LootSortEntry
+{
+	std::string itemName;
+	std::string templateId;
+	Vector3 position;
+	uintptr_t entityAddress = 0;
+	int32_t price = 0;
+	float distance = 0.0f;
+	ImU32 color = 0;
+};
+
 // Widget displaying top valuable loot items sorted by price
 class LootInfoWidget : public RadarWidget
 {
@@ -30,9 +42,9 @@ public:
 
 private:
 	LootInfoWidget() : RadarWidget("Top Loot", ImVec2(10, 270), ImVec2(300, 220)) {}
-
-	// Render a single loot row
-	void RenderLootRow(const CObservedLootItem& item, const Vector3& localPos, int index);
+	
+	// Render loot row from copied entry data (thread-safe)
+	void RenderLootRowFromEntry(const LootSortEntry& entry, int index);
 
 	// Highlighted item (for pulsing on radar)
 	static inline uintptr_t HighlightedItemAddr = 0;

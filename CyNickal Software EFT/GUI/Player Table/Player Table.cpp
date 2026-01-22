@@ -12,7 +12,8 @@ void PlayerTable::Render()
 	if (!bMasterToggle)
 		return;
 
-	if (!EFT::pGameWorld || !EFT::pGameWorld->m_pRegisteredPlayers)
+	auto gameWorld = EFT::GetGameWorld();
+	if (!gameWorld || !gameWorld->m_pRegisteredPlayers)
 		return;
 
 	ImGui::Begin("Player Table", &bMasterToggle);
@@ -36,7 +37,7 @@ void PlayerTable::Render()
 		ImGui::TableHeadersRow();
 
 		static auto LastBusyLog = std::chrono::steady_clock::now();
-		auto& PlayerList = EFT::GetRegisteredPlayers();
+	auto& PlayerList = *gameWorld->m_pRegisteredPlayers;
 		auto PlayerLock = std::unique_lock<std::mutex>(PlayerList.m_Mut, std::try_to_lock);
 		if (!PlayerLock.owns_lock())
 		{

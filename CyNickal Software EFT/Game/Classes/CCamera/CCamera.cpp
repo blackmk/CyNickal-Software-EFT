@@ -89,7 +89,7 @@ void CCamera::Finalize()
 	SetAspectRatio(m_PrivateAspectRatio);
 	SetZoom(m_PrivateZoom);
 
-	std::println("[CCamera] Loaded camera: {} with {{fov{},apsect{},zoom{}}}", GetName(), GetFOV(), GetAspectRatio(), GetZoom());
+	std::println("[CCamera] Loaded camera: {} with {{fov{},aspect{},zoom{}}}", GetName(), GetFOV(), GetAspectRatio(), GetZoom());
 }
 
 void CCamera::QuickFinalize()

@@ -6,6 +6,7 @@
 #include "Game/Classes/Quest/CQuestManager.h"
 #include <algorithm>
 #include <cctype>
+#include <chrono>
 
 // === File-scope variables for item search UI ===
 static char s_ItemSearchBuffer[256] = "";
@@ -115,6 +116,8 @@ UserLootFilter* LootFilter::GetCurrentFilter()
 	{
 		SelectedFilterName = "default";
 		it = FilterPresets.find("default");
+		if (it == FilterPresets.end())
+			return nullptr;  // Safety: return null if default doesn't exist
 	}
 	return &it->second;
 }
@@ -181,10 +184,24 @@ bool LootFilter::IsValuable(const CObservedLootItem& item)
 
 bool LootFilter::IsQuestItem(const CObservedLootItem& item)
 {
-	// Check if CQuestManager says this is a quest item we need
+	// Cache quest snapshot to avoid locking per item
 	auto& questMgr = Quest::CQuestManager::GetInstance();
-	if (questMgr.IsQuestItem(item.GetTemplateId()))
+	static Quest::CQuestManager::QuestSnapshot s_QuestSnapshot{};
+	static std::chrono::steady_clock::time_point s_LastUpdate{};
+	const auto now = std::chrono::steady_clock::now();
+	if (s_LastUpdate == std::chrono::steady_clock::time_point{} ||
+		now - s_LastUpdate > std::chrono::milliseconds(100))
+	{
+		s_QuestSnapshot = questMgr.GetSnapshot();
+		s_LastUpdate = now;
+	}
+
+	const auto& settings = s_QuestSnapshot.Settings;
+	if (settings.bEnabled && settings.bHighlightQuestItems &&
+		s_QuestSnapshot.QuestItemIds.contains(item.GetTemplateId()))
+	{
 		return true;
+	}
 
 	// Also check the ItemDatabase category for static quest item flag
 	const ItemData* data = ItemDatabase::GetItem(item.GetTemplateId());
@@ -408,6 +425,18 @@ ImU32 LootFilter::GetItemColor(const CObservedLootItem& item)
 
 void LootFilter::RenderSettings()
 {
+	// Thread safety: lock mutex before accessing FilterPresets
+	std::scoped_lock lk(GetMutex());
+
+	// Ensure filter presets are initialized before rendering
+	EnsureDefaultFilter();
+
+	if (FilterPresets.empty())
+	{
+		ImGui::Text("Loot filter not initialized");
+		return;
+	}
+
 	if (ImGui::CollapsingHeader("Loot Filter"))
 	{
 		ImGui::Indent();
@@ -574,7 +603,7 @@ void LootFilter::RenderImportantItemsUI()
 	if (!filter)
 		return;
 
-	auto importantItems = filter->GetImportantItems();
+	auto importantItems = filter->GetImportantItems();  // Now returns copies, safe from vector reallocation
 
 	if (importantItems.empty())
 	{
@@ -592,48 +621,48 @@ void LootFilter::RenderImportantItemsUI()
 			ImGui::TableHeadersRow();
 
 			std::vector<std::string> toRemove;
-			for (const auto* entry : importantItems)
+			for (const auto& entry : importantItems)  // Use reference to copy, safe iteration
 			{
 				ImGui::TableNextRow();
 
 				// Enabled toggle
 				ImGui::TableSetColumnIndex(0);
-				bool enabled = entry->enabled;
-				std::string checkboxId = "##imp_en_" + entry->itemId;
+				bool enabled = entry.enabled;
+				std::string checkboxId = "##imp_en_" + entry.itemId;
 				if (ImGui::Checkbox(checkboxId.c_str(), &enabled))
 				{
-					auto* mutableEntry = filter->GetEntryMutable(entry->itemId);
+					auto* mutableEntry = filter->GetEntryMutable(entry.itemId);
 					if (mutableEntry)
 						mutableEntry->enabled = enabled;
 				}
 
 				// Name
 				ImGui::TableSetColumnIndex(1);
-				ImGui::Text("%s", entry->itemName.c_str());
+				ImGui::Text("%s", entry.itemName.c_str());
 
 				// Color picker
 				ImGui::TableSetColumnIndex(2);
-				ImVec4 color = ImGui::ColorConvertU32ToFloat4(entry->customColor != 0 ? entry->customColor : filter->defaultImportantColor);
-				std::string colorId = "##imp_col_" + entry->itemId;
+				ImVec4 color = ImGui::ColorConvertU32ToFloat4(entry.customColor != 0 ? entry.customColor : filter->defaultImportantColor);
+				std::string colorId = "##imp_col_" + entry.itemId;
 				if (ImGui::ColorEdit4(colorId.c_str(), &color.x, ImGuiColorEditFlags_NoInputs | ImGuiColorEditFlags_NoLabel))
 				{
-					auto* mutableEntry = filter->GetEntryMutable(entry->itemId);
+					auto* mutableEntry = filter->GetEntryMutable(entry.itemId);
 					if (mutableEntry)
 						mutableEntry->customColor = ImGui::ColorConvertFloat4ToU32(color);
 				}
 
 				// Remove button
 				ImGui::TableSetColumnIndex(3);
-				std::string removeId = "X##imp_rm_" + entry->itemId;
+				std::string removeId = "X##imp_rm_" + entry.itemId;
 				if (ImGui::Button(removeId.c_str()))
 				{
-					toRemove.push_back(entry->itemId);
+					toRemove.push_back(entry.itemId);
 				}
 			}
 
 			ImGui::EndTable();
 
-			// Remove marked items
+			// Remove marked items (safe: we're iterating over our copy, not the original)
 			for (const auto& id : toRemove)
 			{
 				filter->RemoveItem(id);
@@ -648,7 +677,7 @@ void LootFilter::RenderBlacklistUI()
 	if (!filter)
 		return;
 
-	auto blacklistedItems = filter->GetBlacklistedItems();
+	auto blacklistedItems = filter->GetBlacklistedItems();  // Now returns copies, safe from vector reallocation
 
 	if (blacklistedItems.empty())
 	{
@@ -664,37 +693,37 @@ void LootFilter::RenderBlacklistUI()
 			ImGui::TableHeadersRow();
 
 			std::vector<std::string> toRemove;
-			for (const auto* entry : blacklistedItems)
+			for (const auto& entry : blacklistedItems)  // Use reference to copy, safe iteration
 			{
 				ImGui::TableNextRow();
 
 				// Enabled toggle
 				ImGui::TableSetColumnIndex(0);
-				bool enabled = entry->enabled;
-				std::string checkboxId = "##bl_en_" + entry->itemId;
+				bool enabled = entry.enabled;
+				std::string checkboxId = "##bl_en_" + entry.itemId;
 				if (ImGui::Checkbox(checkboxId.c_str(), &enabled))
 				{
-					auto* mutableEntry = filter->GetEntryMutable(entry->itemId);
+					auto* mutableEntry = filter->GetEntryMutable(entry.itemId);
 					if (mutableEntry)
 						mutableEntry->enabled = enabled;
 				}
 
 				// Name
 				ImGui::TableSetColumnIndex(1);
-				ImGui::Text("%s", entry->itemName.c_str());
+				ImGui::Text("%s", entry.itemName.c_str());
 
 				// Remove button
 				ImGui::TableSetColumnIndex(2);
-				std::string removeId = "X##bl_rm_" + entry->itemId;
+				std::string removeId = "X##bl_rm_" + entry.itemId;
 				if (ImGui::Button(removeId.c_str()))
 				{
-					toRemove.push_back(entry->itemId);
+					toRemove.push_back(entry.itemId);
 				}
 			}
 
 			ImGui::EndTable();
 
-			// Remove marked items
+			// Remove marked items (safe: we're iterating over our copy, not the original)
 			for (const auto& id : toRemove)
 			{
 				filter->RemoveItem(id);

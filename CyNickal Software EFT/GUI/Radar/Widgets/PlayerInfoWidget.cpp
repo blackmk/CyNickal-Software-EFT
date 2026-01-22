@@ -94,8 +94,13 @@ void PlayerInfoWidget::Render()
 	ImGui::Text("Players: %zu", entries.size());
 	ImGui::Separator();
 
-	// Table header
-	if (ImGui::BeginTable("PlayerTable", 4, ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg | ImGuiTableFlags_ScrollY,
+	// Table header - calculate column count dynamically
+	int columnCount = 1;  // Name always present
+	if (ShowWeapon) columnCount++;
+	if (ShowHealth) columnCount++;
+	if (ShowDistance) columnCount++;
+
+	if (ImGui::BeginTable("PlayerTable", columnCount, ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg | ImGuiTableFlags_ScrollY,
 		ImVec2(0, ImGui::GetContentRegionAvail().y)))
 	{
 		ImGui::TableSetupColumn("Name", ImGuiTableColumnFlags_WidthStretch);
@@ -128,8 +133,11 @@ void PlayerInfoWidget::RenderPlayerRow(const CObservedPlayer& player, const Vect
 	ImU32 color = GetPlayerTypeColor(player);
 	bool isFocused = PlayerFocus::FocusedPlayerAddr == player.m_EntityAddress;
 
-	// Name column
-	ImGui::TableSetColumnIndex(0);
+	// Use sequential column index based on which columns are actually present
+	int col = 0;
+
+	// Name column (always present)
+	ImGui::TableSetColumnIndex(col++);
 	if (isFocused)
 	{
 		ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.0f, 1.0f, 0.0f, 1.0f));
@@ -149,7 +157,7 @@ void PlayerInfoWidget::RenderPlayerRow(const CObservedPlayer& player, const Vect
 	// Weapon column
 	if (ShowWeapon)
 	{
-		ImGui::TableSetColumnIndex(1);
+		ImGui::TableSetColumnIndex(col++);
 		if (player.m_pHands && player.m_pHands->m_pHeldItem)
 		{
 			const std::string& weaponNameRef = player.m_pHands->m_pHeldItem->GetItemName();
@@ -175,7 +183,7 @@ void PlayerInfoWidget::RenderPlayerRow(const CObservedPlayer& player, const Vect
 	// Health column
 	if (ShowHealth)
 	{
-		ImGui::TableSetColumnIndex(2);
+		ImGui::TableSetColumnIndex(col++);
 		const char* healthStr = GetHealthStatusString(player.m_TagStatus);
 		ImVec4 healthColor;
 		if (player.m_TagStatus & static_cast<uint32_t>(ETagStatus::Dying))
@@ -193,7 +201,7 @@ void PlayerInfoWidget::RenderPlayerRow(const CObservedPlayer& player, const Vect
 	// Distance column
 	if (ShowDistance)
 	{
-		ImGui::TableSetColumnIndex(3);
+		ImGui::TableSetColumnIndex(col++);
 		ImGui::Text("%s", GetDistanceString(distance).c_str());
 	}
 }
@@ -206,8 +214,11 @@ void PlayerInfoWidget::RenderPlayerRow(const CClientPlayer& player, const Vector
 	ImU32 color = GetPlayerTypeColor(player);
 	bool isFocused = PlayerFocus::FocusedPlayerAddr == player.m_EntityAddress;
 
-	// Name column
-	ImGui::TableSetColumnIndex(0);
+	// Use sequential column index based on which columns are actually present
+	int col = 0;
+
+	// Name column (always present)
+	ImGui::TableSetColumnIndex(col++);
 	if (isFocused)
 	{
 		ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.0f, 1.0f, 0.0f, 1.0f));
@@ -227,7 +238,7 @@ void PlayerInfoWidget::RenderPlayerRow(const CClientPlayer& player, const Vector
 	// Weapon column
 	if (ShowWeapon)
 	{
-		ImGui::TableSetColumnIndex(1);
+		ImGui::TableSetColumnIndex(col++);
 		if (player.m_pHands && player.m_pHands->m_pHeldItem)
 		{
 			const std::string& weaponNameRef = player.m_pHands->m_pHeldItem->GetItemName();
@@ -252,14 +263,14 @@ void PlayerInfoWidget::RenderPlayerRow(const CClientPlayer& player, const Vector
 	// Health column
 	if (ShowHealth)
 	{
-		ImGui::TableSetColumnIndex(2);
-		ImGui::TextColored(ImVec4(0.2f, 1.0f, 0.2f, 1.0f), "?");
+		ImGui::TableSetColumnIndex(col++);
+		ImGui::TextColored(ImVec4(0.5f, 0.5f, 0.5f, 1.0f), "?");  // Gray "unknown" for CClientPlayer
 	}
 
 	// Distance column
 	if (ShowDistance)
 	{
-		ImGui::TableSetColumnIndex(3);
+		ImGui::TableSetColumnIndex(col++);
 		ImGui::Text("%s", GetDistanceString(distance).c_str());
 	}
 }

@@ -10,14 +10,6 @@
 #include <algorithm>
 #include <cmath>
 
-// Helper struct for sorting loot
-struct LootSortEntry
-{
-	const CObservedLootItem* item = nullptr;
-	int32_t price = 0;
-	float distance = 0.0f;
-};
-
 void LootInfoWidget::Render()
 {
 	if (!EFT::IsInRaid() && !DebugMode::IsDebugMode())
@@ -39,7 +31,7 @@ void LootInfoWidget::Render()
 	// Get local player position
 	Vector3 localPos = EFT::GetRegisteredPlayers().GetLocalPlayerPosition();
 
-	// Collect all visible loot with prices
+	// Collect all visible loot with prices - copy data inside lock scope
 	std::vector<LootSortEntry> entries;
 
 	{
@@ -57,11 +49,16 @@ void LootInfoWidget::Render()
 				continue;
 
 			LootSortEntry entry;
-			entry.item = &item;
+			// Copy all needed data to avoid dangling pointers
+			entry.itemName = item.GetName();
+			entry.templateId = item.GetTemplateId();
+			entry.position = item.m_Position;
+			entry.entityAddress = item.m_EntityAddress;
 			entry.price = LootFilter::GetEffectivePrice(item);
 			entry.distance = item.m_Position.DistanceTo(localPos);
+			entry.color = LootFilter::GetItemColor(item);
 
-			entries.push_back(entry);
+			entries.push_back(std::move(entry));
 		}
 	}
 
@@ -113,22 +110,18 @@ void LootInfoWidget::Render()
 		int index = 0;
 		for (const auto& entry : entries)
 		{
-			if (entry.item)
-				RenderLootRow(*entry.item, localPos, index++);
+			RenderLootRowFromEntry(entry, index++);
 		}
 
 		ImGui::EndTable();
 	}
 }
 
-void LootInfoWidget::RenderLootRow(const CObservedLootItem& item, const Vector3& localPos, int index)
+void LootInfoWidget::RenderLootRowFromEntry(const LootSortEntry& entry, int index)
 {
 	ImGui::TableNextRow();
 
-	float distance = item.m_Position.DistanceTo(localPos);
-	int32_t price = LootFilter::GetEffectivePrice(item);
-	ImU32 color = LootFilter::GetItemColor(item);
-	bool isHighlighted = HighlightedItemAddr == item.m_EntityAddress;
+	bool isHighlighted = HighlightedItemAddr == entry.entityAddress;
 
 	// Item name column
 	ImGui::TableSetColumnIndex(0);
@@ -141,14 +134,14 @@ void LootInfoWidget::RenderLootRow(const CObservedLootItem& item, const Vector3&
 	}
 	else
 	{
-		ImGui::PushStyleColor(ImGuiCol_Text, ImGui::ColorConvertU32ToFloat4(color));
+		ImGui::PushStyleColor(ImGuiCol_Text, ImGui::ColorConvertU32ToFloat4(entry.color));
 	}
 
-	// Get item name from database
-	std::string itemName = item.GetName();
+	// Get item name from copied data or database
+	std::string itemName = entry.itemName;
 	if (itemName.empty())
 	{
-		const ItemData* data = ItemDatabase::GetItem(item.GetTemplateId());
+		const ItemData* data = ItemDatabase::GetItem(entry.templateId);
 		if (data)
 			itemName = data->shortName.empty() ? data->name : data->shortName;
 		else
@@ -163,7 +156,7 @@ void LootInfoWidget::RenderLootRow(const CObservedLootItem& item, const Vector3&
 	if (ImGui::Selectable(selectableId.c_str(), isHighlighted, ImGuiSelectableFlags_SpanAllColumns))
 	{
 		// Click to highlight on radar
-		HighlightedItemAddr = item.m_EntityAddress;
+		HighlightedItemAddr = entry.entityAddress;
 		HighlightTimer = 0.0f;
 	}
 	ImGui::PopStyleColor();
@@ -172,19 +165,19 @@ void LootInfoWidget::RenderLootRow(const CObservedLootItem& item, const Vector3&
 	if (ShowPrice)
 	{
 		ImGui::TableSetColumnIndex(1);
-		if (price >= 1000000)
-			ImGui::Text("%.1fM", price / 1000000.0f);
-		else if (price >= 1000)
-			ImGui::Text("%dk", price / 1000);
+		if (entry.price >= 1000000)
+			ImGui::Text("%.1fM", entry.price / 1000000.0f);
+		else if (entry.price >= 1000)
+			ImGui::Text("%dk", entry.price / 1000);
 		else
-			ImGui::Text("%d", price);
+			ImGui::Text("%d", entry.price);
 	}
 
-	// Distance column
+	// Distance column - use dynamic index based on which columns are present
 	if (ShowDistance)
 	{
-		ImGui::TableSetColumnIndex(2);
-		ImGui::Text("%dm", static_cast<int>(distance));
+		ImGui::TableSetColumnIndex(ShowPrice ? 2 : 1);
+		ImGui::Text("%dm", static_cast<int>(entry.distance));
 	}
 }
 

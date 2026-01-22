@@ -7,6 +7,7 @@
 #include "Database/Database.h"
 #include "DebugMode.h"
 #include "GUI/KmboxSettings/KmboxSettings.h"
+#include "GUI/Fuser/Fuser.h"
 
 #include <filesystem>
 #include <fstream>
@@ -23,6 +24,11 @@
 
 std::atomic<bool> bRunning{ true };
 static std::ofstream g_LogFile;
+
+// Store original stream buffers for proper cleanup
+static std::streambuf* g_OrigCout = nullptr;
+static std::streambuf* g_OrigCerr = nullptr;
+static std::streambuf* g_OrigClog = nullptr;
 
 static bool TryOpenLogAt(const std::filesystem::path& path)
 {
@@ -94,9 +100,10 @@ static void InitLogging()
 			std::strftime(buf, sizeof(buf), "%Y-%m-%d %H:%M:%S", &tm);
 			g_LogFile << "--- START " << buf << " ---\n";
 			g_LogFile.flush();
-			std::cout.rdbuf(g_LogFile.rdbuf());
-			std::cerr.rdbuf(g_LogFile.rdbuf());
-			std::clog.rdbuf(g_LogFile.rdbuf());
+			// Save original stream buffers before redirecting
+			g_OrigCout = std::cout.rdbuf(g_LogFile.rdbuf());
+			g_OrigCerr = std::cerr.rdbuf(g_LogFile.rdbuf());
+			g_OrigClog = std::clog.rdbuf(g_LogFile.rdbuf());
 		}
 	}
 	catch (...)
@@ -182,18 +189,26 @@ static void SetTerminateHandler()
 {
 	std::set_terminate([]()
 	{
-		try
+		std::exception_ptr eptr = std::current_exception();
+		if (eptr)
 		{
-			std::rethrow_exception(std::current_exception());
+			try
+			{
+				std::rethrow_exception(eptr);
+			}
+			catch (const std::exception& e)
+			{
+				std::string msg = std::string("TERMINATE: ") + e.what();
+				LogLine(msg.c_str());
+			}
+			catch (...)
+			{
+				LogLine("TERMINATE: unknown exception");
+			}
 		}
-		catch (const std::exception& e)
+		else
 		{
-			std::string msg = std::string("TERMINATE: ") + e.what();
-			LogLine(msg.c_str());
-		}
-		catch (...)
-		{
-			LogLine("TERMINATE: unknown exception");
+			LogLine("TERMINATE: no active exception");
 		}
 		std::abort();
 	});
@@ -237,6 +252,8 @@ static int RunApp()
 	{
 		LogLine("Config load failed: unknown exception");
 	}
+	LogLine("INIT Fuser monitor settings");
+	Fuser::Initialize();
 	KmboxSettings::TryAutoConnect();
 
 	LogLine("INIT Makcu");

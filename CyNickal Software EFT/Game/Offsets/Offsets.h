@@ -29,8 +29,8 @@ namespace Offsets
 
 	namespace CGameObjectManager
 	{
-		inline constexpr std::ptrdiff_t pActiveNodes{ 0x20 };
-		inline constexpr std::ptrdiff_t pLastActiveNode{ 0x28 };
+		inline constexpr std::ptrdiff_t pLastActiveNode{ 0x20 };
+		inline constexpr std::ptrdiff_t pActiveNodes{ 0x28 };
 	};
 
 	/* namespace: EFT, class: GameWorld : UnityEngine::MonoBehaviour */
@@ -307,7 +307,7 @@ namespace Offsets
 		inline constexpr std::ptrdiff_t InitialSpeed{ 0x1A4 };
 		inline constexpr std::ptrdiff_t BallisticCoefficient{ 0x1B8 };
 		inline constexpr std::ptrdiff_t BulletMassGram{ 0x25C };
-		inline constexpr std::ptrdiff_t BulletDiameterMilimeters{ 0x260 };
+		inline constexpr std::ptrdiff_t BulletDiameterMillimeters{ 0x260 };
 	}
 
 	/* EFT.InventoryLogic::WeaponTemplate */

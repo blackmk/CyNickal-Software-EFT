@@ -2,6 +2,7 @@
 #include <string>
 #include <functional>
 #include <unordered_map>
+#include <mutex>
 #include "Game/Classes/CObservedLootItem/CObservedLootItem.h"
 #include "GUI/LootFilter/LootFilterEntry.h"
 #include "GUI/LootFilter/UserLootFilter.h"
@@ -10,6 +11,9 @@
 class LootFilter
 {
 public:
+	// === Thread safety ===
+	static std::mutex& GetMutex() { static std::mutex mtx; return mtx; }
+
 	// === Global filter settings ===
 	static inline std::string SearchString = "";
 	static inline bool ShowMeds = true;

@@ -6,6 +6,289 @@ This document tracks changes made to the codebase by AI agents and developers. P
 
 <!-- Add new entries below this line -->
 
+## [Date: 2026-01-22] - Templated Player Read Stages
+
+**Agent:** OpenCode
+**Focus:** C++
+
+### Changes
+- **Modified:** `Game/Classes/CRegisteredPlayers/CRegisteredPlayers.cpp` - Replaced scatter read boilerplate with templated stage dispatch and index-sequence execution.
+- **Technical Details:** Stage-specific `PrepareRead_X` calls now route through a single `ExecuteStage` template, keeping the execute/clear cycle consistent.
+
+### Verification
+- [x] Build succeeded (0 errors)
+- [x] Patch note recorded after the successful build
+- [ ] Verified in Debug mode / In-game
+
+## [Date: 2026-01-22] - Fix Kmbox Aimbot Targeting Dead Players
+
+**Agent:** Claude Code
+**Focus:** C++
+
+### Changes
+- **Fixed:** `GUI/Aimbot/Aimbot.cpp` - Added dead/dying player exclusion to `ShouldTargetPlayer()` template function.
+- **Modified:** `GUI/Aimbot/Aimbot.cpp` - Added `#include "Game/Classes/Players/CObservedPlayer/CObservedPlayer.h"` for type checking.
+
+### Issue Resolved
+The kmbox aimbot would stop working after killing an NPC because it continued targeting the dead body:
+- **Root Cause:** `ShouldTargetPlayer()` didn't check the `ETagStatus::Dying` flag, allowing dead players to remain valid targets.
+- **Impact:** After killing an enemy, the aimbot would "lock" onto the corpse until the body was removed from the player list, preventing it from switching to new targets.
+- **Solution:** Added compile-time type check using `if constexpr` to exclude `CObservedPlayer` entities with `ETagStatus::Dying` flag set.
+
+### Technical Details
+- Uses C++17 `if constexpr` for compile-time template specialization
+- Only applies to `CObservedPlayer` type (AI/PMC/Scavs), not `CClientPlayer` (local player)
+- Leverages existing `IsInCondition()` method from `CObservedPlayer` class
+
+### Verification
+- [x] Build succeeded (0 errors)
+- [x] Patch note recorded
+- [ ] Verified in-game (requires testing aimbot after killing NPCs)
+
+---
+
+## [Date: 2026-01-22] - Fix High-Value Item Range Slider
+
+**Agent:** Claude Code
+**Focus:** C++
+
+### Changes
+- **Fixed:** `GUI/Fuser/Draw/Loot.cpp` - Changed `DrawItem()` to use `LootFilter::GetEffectivePrice()` instead of `Item.GetItemPrice()` for consistent price calculation with the color system.
+- **Fixed:** `main.cpp` - Added missing `#include "GUI/Fuser/Fuser.h"` to resolve compilation error.
+
+### Issue Resolved
+The ESP high-value item range slider (fItemHighRange) was not affecting which items were displayed due to a price calculation inconsistency:
+- **Root Cause:** The range filtering used raw item prices while the color system used effective prices (with price-per-slot adjustment).
+- **Impact:** Items with effective prices >100k (due to price-per-slot) were colored as "high-value" but filtered using lower-tier ranges.
+- **Solution:** Both systems now use `LootFilter::GetEffectivePrice()` for consistent tier classification.
+
+### Verification
+- [x] Build succeeded (0 errors)
+- [x] Patch note recorded
+- [ ] Verified in-game (requires testing with Price Per Slot enabled/disabled)
+
+---
+
+## [Date: 2026-01-21] - Fix Radar Quest Marker Deadlock
+
+**Agent:** OpenCode
+**Focus:** C++
+
+### Changes
+- **Modified:** `Game/Classes/Quest/CQuestManager.h` - Added `GetSettingsCopy()` for thread-safe quest settings snapshots.
+- **Modified:** `GUI/Radar/Radar2D.cpp` - Removed double-lock in quest marker rendering by using settings/location snapshots.
+
+### Verification
+- [x] Build succeeded (0 errors)
+- [x] Patch note recorded after the successful build
+- [ ] Verified in Debug mode / In-game
+
+---
+
+## [Date: 2026-01-21] - Stabilize Radar Render Path
+
+**Agent:** OpenCode
+**Focus:** C++
+
+### Changes
+- **Modified:** `Game/EFT.h` and `Game/EFT.cpp` - Added thread-safe GameWorld snapshot access via shared mutex/shared_ptr to prevent UI/DMA races.
+- **Modified:** `GUI/Radar/Radar2D.h` and `GUI/Radar/Radar2D.cpp` - Render uses GameWorld snapshots, passes data pointers, and uses a black radar background.
+- **Modified:** `DMA/DMA Thread.cpp` - Loot refresh now references GameWorld snapshots for safety.
+- **Modified:** `GUI/Fuser/Fuser.cpp`, `GUI/Fuser/Draw/Loot.cpp`, `GUI/Fuser/Draw/Exfils.cpp` - Guarded overlay reads with GameWorld snapshots.
+- **Modified:** `GUI/Player Table/Player Table.cpp` and `GUI/Item Table/Item Table.cpp` - Read player/loot data via GameWorld snapshots.
+- **Modified:** `Game/Classes/CExfilPoint/CExfilPoint.cpp` - Safe map-name lookup via GameWorld snapshot.
+
+### Verification
+- [x] Build succeeded (0 errors)
+- [x] Patch note recorded after the successful build
+- [ ] Verified in Debug mode / In-game
+
+---
+
+## [Date: 2026-01-21] - GOM Discovery Hardening
+
+**Agent:** OpenCode
+**Focus:** C++
+
+### Changes
+- **Modified:** `Game/Offsets/Offsets.h` - Corrected GOM node offsets to match reference layout (LastActiveNode at 0x20, ActiveNodes at 0x28).
+- **Modified:** `Game/GOM/GOM.cpp` - Added signature-scan fallback for GOM pointer, cached resolved address, and validated node reads before traversal.
+- **Modified:** `Game/GOM/GOM.cpp` - Updated bidirectional traversal to anchor on `LastActiveNode` and added targeted failure logging.
+
+### Verification
+- [x] Build succeeded (0 errors)
+- [x] Patch note recorded after the successful build
+- [ ] Verified in Debug mode / In-game
+
+---
+
+## [Date: 2026-01-21] - Improve Raid Detection Retry
+
+**Agent:** OpenCode
+**Focus:** C++
+
+### Changes
+- **Modified:** `Game/EFT.cpp` - Allow GOM rescan when GameWorld exists but raid not active; added retry failure log.
+- **Modified:** `DMA/DMA Thread.cpp` - Retry GameWorld discovery every 4 seconds when not in raid and log each scan attempt.
+
+### Verification
+- [x] Build succeeded (0 errors)
+- [x] Patch note recorded after the successful build
+- [ ] Verified in Debug mode / In-game
+
+---
+
+## [Date: 2026-01-21] - Fix Radar Config Crash (Race Conditions)
+
+**Agent:** Claude Code (Opus 4.5)
+**Focus:** C++
+
+### Changes
+
+- **Fixed:** `Main Menu.cpp:1135` - Race condition in Quest Helper UI. Moved `std::scoped_lock` before any settings access (was at line 1170, after settings were already being read/written).
+
+- **Fixed:** `LootFilter.cpp:110-119` - Invalid iterator dereference in `GetCurrentFilter()`. Added nullptr safety check when "default" filter is not found.
+
+- **Fixed:** `Config.cpp:302-310` - Unprotected Quest settings access during serialization. Added `std::scoped_lock` before iterating `BlacklistedQuests`.
+
+- **Fixed:** `Config.cpp:740-767` - Unprotected Quest settings access during deserialization. Added `std::scoped_lock` before modifying settings.
+
+### Files Modified
+
+| File | Change |
+|------|--------|
+| `GUI/Main Menu/Main Menu.cpp` | Moved mutex lock to protect all settings access |
+| `GUI/LootFilter/LootFilter.cpp` | Added nullptr safety in GetCurrentFilter() |
+| `GUI/Config/Config.cpp` | Added mutex locks for serialize/deserialize |
+
+### Verification
+- [x] Build succeeded (0 errors)
+- [x] Patch note recorded
+- [ ] Verified in-game
+
+---
+
+## [Date: 2026-01-21] - Code Review and Cleanup: Critical Bug Fixes
+
+**Agent:** Claude Code (Antigravity)
+**Focus:** C++
+
+### Phase 1: Critical Bug Fixes (5 items)
+
+- **Fixed:** `DMA.cpp:32` - Manual destructor call causing undefined behavior. `EndConnection()` now properly closes VMM handle and resets state without calling `this->~DMA_Connection()` (which caused double destructor on object deletion).
+
+- **Fixed:** `Process.cpp:81` - `PopulateModules()` returned `false` after success. Changed to `return true`.
+
+- **Fixed:** `Process.cpp:13,64` - Infinite wait loops with no timeout. Added `maxRetries` parameter (default 60 seconds) to both `GetProcessInfo()` and `PopulateModules()`. Loops now exit with error message after timeout instead of hanging indefinitely.
+
+- **Fixed:** `EFT.cpp:173` - Wrong error message string. Changed `"m_pRegisteredExfils"` to `"m_pExfilController"` to match the actual variable being checked.
+
+### Phase 2: Dead Code Removal (1 item)
+
+- **Removed:** `LootInfoWidget.cpp:185-250` - Deleted unused `RenderLootRow()` function (marked "legacy" in comment, full duplicate of `RenderLootRowFromEntry()`, never called). Also removed declaration from header.
+
+### Phase 3: Code Simplification (1 item)
+
+- **Refactored:** `CRegisteredPlayers.cpp:11-91` - DRY refactor of 14 nearly identical scatter loop blocks. Created `ExecuteScatterPhase<>()` template helper function that encapsulates the loop-execute-clear pattern. Reduced ~70 lines of repetitive code to 14 concise calls.
+
+### Files Modified
+
+| File | Change |
+|------|--------|
+| `DMA/DMA.cpp` | Fixed undefined behavior from manual destructor call |
+| `DMA/Process.cpp` | Fixed return value, added timeout to infinite loops |
+| `DMA/Process.h` | Updated function signatures with `maxRetries` parameter |
+| `Game/EFT.cpp` | Fixed error message typo |
+| `GUI/Radar/Widgets/LootInfoWidget.cpp` | Removed dead `RenderLootRow()` function |
+| `GUI/Radar/Widgets/LootInfoWidget.h` | Removed dead function declaration |
+| `Game/Classes/CRegisteredPlayers/CRegisteredPlayers.cpp` | DRY refactor with template helper |
+
+### Verification
+- [x] Build succeeded (0 errors)
+- [x] Patch note recorded
+- [ ] Verified in-game
+
+---
+
+## [Date: 2026-01-20] - CodeRabbit Review Phase 2 & 3: High/Medium Priority Fixes
+
+**Agent:** Claude Code (Antigravity)
+**Focus:** C++
+
+### Phase 2: High Priority Fixes (13 completed, 1 deferred)
+
+- **Fixed:** `Config.cpp:600-607` - Removed duplicate `eTargetingMode` deserialization block
+- **Fixed:** `Main Menu.cpp:461-477` - Aimline preference no longer mutated when trajectory enabled; UI shows disabled state without changing user preference
+- **Fixed:** `Exfils.cpp:25-28` - Early return when local player invalid (prevents meaningless distance from origin)
+- **Fixed:** `LootFilterEntry.h:17` - Initialize `type` enum to `ImportantLoot` by default
+- **Fixed:** `UserLootFilter.h:104-126` - Added `entry.enabled` check to `GetImportantItems()`/`GetBlacklistedItems()`
+- **Fixed:** `PlayerInfoWidget.cpp:97-108` - Dynamic column count based on which columns are shown
+- **Fixed:** `PlayerInfoWidget.cpp:123-199, 201-265` - Sequential column indices based on visible columns
+- **Fixed:** `LootInfoWidget.cpp:183-188` - Dynamic distance column index (`ShowPrice ? 2 : 1`)
+- **Fixed:** `ItemDatabase.cpp:101-168` - Thread-safe initialization using `std::call_once`
+- **Fixed:** `CQuestManager.h:57-86` - Added mutex to `IsQuestItem()`, return copies from accessors for thread safety
+- **Fixed:** `LootInfoWidget.cpp:13-66` - Fixed pointer lifetime issue by copying loot data inside lock scope
+- **Fixed:** `MonitorHelper.cpp:4-27` - Only push MonitorData on successful `GetMonitorInfoA` call
+- **Fixed:** `main.cpp:97-99` - Save/restore original stream buffers before redirecting to log file
+- **Fixed:** `Players.cpp:224-227` - CClientPlayer shows gray "unknown" health bar (no actual health data)
+- **Deferred:** `CClientPlayer.cpp:304-307` - FirearmManager Update call requires architectural changes
+
+### Phase 3: Medium/Low Priority Fixes
+
+- **Fixed:** `CCamera.cpp:92` - Typo fix: `apsect` → `aspect`
+- **Fixed:** `Offsets.h:310` - Typo fix: `BulletDiameterMilimeters` → `BulletDiameterMillimeters`
+- **Fixed:** `CFirearmManager.cpp:172` - Updated offset reference to match spelling fix
+- **Removed:** Accidental files `coderabbit_install.sh`, `coderabbit_page.html`
+- **Updated:** `.gitignore` - Added `.claude/settings.local.json`, `quick_build.bat`, `quick_build.ps1`
+
+### Technical Details
+- Thread safety improvements for multi-threaded DMA/GUI architecture
+- ImGui table column handling fixes for dynamic column visibility
+- Pointer lifetime fixes prevent use-after-free in loot widget
+- Enum initialization prevents undefined behavior from uninitialized members
+
+### Verification
+- [x] Build succeeded (0 errors)
+- [x] Patch note recorded
+- [ ] Verified in-game
+
+---
+
+## [Date: 2026-01-20] - CodeRabbit Review Phase 1: Critical Bug Fixes
+
+**Agent:** Claude Code (Antigravity)
+**Focus:** C++
+
+### Changes (7 Critical Fixes)
+
+- **Fixed:** `main.cpp:181-200` - Terminate handler undefined behavior. Now checks `std::current_exception()` before calling `std::rethrow_exception()` to prevent UB when terminate is called without an active exception.
+
+- **Fixed:** `CUnityTransform.cpp:229` - Added bounds check for `m_Indices[m_Index]` access. Now validates `m_Index < m_Indices.size()` before array access to prevent out-of-bounds crashes.
+
+- **Fixed:** `CUnityTransform.cpp:204-225` - Added return value validation for `VMMDLL_MemReadEx` calls in `CompleteInit()`. Now checks `bytesRead` matches expected size and calls `SetInvalid()` on failure instead of using uninitialized data.
+
+- **Fixed:** `EFT.cpp:9-10` - Changed `g_IsInRaid` and `g_InvalidRaidReads` from plain `bool`/`int` to `std::atomic<bool>`/`std::atomic<int>` to prevent data races between DMA thread and GUI thread.
+
+- **Fixed:** `Vector.h:22-25` - Added division by zero guard in `operator/`. Now returns `*this` if scalar is 0 instead of performing undefined division.
+
+- **Fixed:** `Ballistics.h:20` - Changed `BallisticCoefficient >= 0.f` to `BallisticCoefficient > 0.f` in `IsAmmoValid()` to prevent division by zero in ballistic calculations.
+
+- **Fixed:** `ExfilNameMap.h:14-38` - Fixed undefined behavior in `::tolower()` calls. Now casts chars to `unsigned char` before passing to `std::tolower()` to prevent UB with negative char values (>127).
+
+### Technical Details
+These fixes address critical issues identified by CodeRabbit CLI review:
+- 3 undefined behavior issues that could cause crashes
+- 1 data race between threads
+- 2 division by zero vulnerabilities
+- 1 out-of-bounds array access
+
+### Verification
+- [x] Build succeeded (0 errors)
+- [x] Patch note recorded
+- [ ] Verified in-game
+
+---
+
 ## [Date: 2026-01-20] - Scope Zoom Detection Fixes
 
 **Agent:** Claude Code (Antigravity)

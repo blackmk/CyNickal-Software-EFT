@@ -1,10 +1,179 @@
 #include "pch.h"
 #include "GOM.h"
 #include "Game/EFT.h"
+#include <cstdint>
 #include <fstream>
 #include <unordered_set>
+#include <vector>
 #include "Game/Offsets/Offsets.h"
 #include "Game/Classes/CLinkedListEntry.h"
+
+namespace
+{
+	constexpr const char* kGomSignature = "48 8B 35 ? ? ? ? 48 85 F6 0F 84 ? ? ? ? 8B 46";
+
+	uint8_t HexNibble(char value)
+	{
+		if (value >= '0' && value <= '9')
+			return static_cast<uint8_t>(value - '0');
+		if (value >= 'a' && value <= 'f')
+			return static_cast<uint8_t>(10 + value - 'a');
+		if (value >= 'A' && value <= 'F')
+			return static_cast<uint8_t>(10 + value - 'A');
+		return 0;
+	}
+
+	uint8_t HexByte(const char* hex)
+	{
+		return static_cast<uint8_t>((HexNibble(hex[0]) << 4) | HexNibble(hex[1]));
+	}
+
+	void BuildPattern(const char* signature, std::vector<uint8_t>& bytes, std::vector<uint8_t>& mask)
+	{
+		bytes.clear();
+		mask.clear();
+		const char* cursor = signature;
+		while (*cursor != '\0')
+		{
+			if (*cursor == ' ')
+			{
+				++cursor;
+				continue;
+			}
+			if (*cursor == '?')
+			{
+				bytes.push_back(0);
+				mask.push_back(0);
+				if (cursor[1] == '?')
+					++cursor;
+				++cursor;
+				continue;
+			}
+			bytes.push_back(HexByte(cursor));
+			mask.push_back(1);
+			cursor += 2;
+		}
+	}
+
+	uintptr_t FindSignature(DMA_Connection* Conn, const Process& Proc, uintptr_t rangeStart, uintptr_t rangeEnd, const char* signature)
+	{
+		if (!Conn || !Conn->IsConnected() || rangeStart >= rangeEnd)
+			return 0;
+
+		auto rangeSize = rangeEnd - rangeStart;
+		if (rangeSize > static_cast<size_t>(static_cast<DWORD>(-1)))
+			return 0;
+
+		std::vector<uint8_t> buffer(rangeSize);
+		DWORD bytesRead = 0;
+		if (!VMMDLL_MemReadEx(Conn->GetHandle(), Proc.GetPID(), rangeStart, buffer.data(), static_cast<DWORD>(buffer.size()), &bytesRead, VMMDLL_FLAG_NOCACHE))
+			return 0;
+		if (bytesRead == 0)
+			return 0;
+
+		std::vector<uint8_t> pattern;
+		std::vector<uint8_t> mask;
+		BuildPattern(signature, pattern, mask);
+		if (pattern.empty() || pattern.size() != mask.size() || bytesRead < pattern.size())
+			return 0;
+
+		const size_t scanSize = static_cast<size_t>(bytesRead);
+		for (size_t i = 0; i + pattern.size() <= scanSize; ++i)
+		{
+			bool match = true;
+			for (size_t j = 0; j < pattern.size(); ++j)
+			{
+				if (mask[j] && buffer[i + j] != pattern[j])
+				{
+					match = false;
+					break;
+				}
+			}
+			if (match)
+				return rangeStart + i;
+		}
+
+		return 0;
+	}
+
+	bool TryGetModuleRange(DMA_Connection* Conn, const Process& Proc, const std::string& moduleName, uintptr_t& base, size_t& size)
+	{
+		base = 0;
+		size = 0;
+
+		PVMMDLL_MAP_MODULEENTRY moduleEntry = nullptr;
+		if (!VMMDLL_Map_GetModuleFromNameU(Conn->GetHandle(), Proc.GetPID(), moduleName.c_str(), &moduleEntry, 0))
+			return false;
+
+		base = static_cast<uintptr_t>(moduleEntry->vaBase);
+		size = static_cast<size_t>(moduleEntry->cbImageSize);
+		VMMDLL_MemFree(moduleEntry);
+
+		return base != 0 && size != 0;
+	}
+
+	bool TryReadPointer(const Process& Proc, DMA_Connection* Conn, uintptr_t address, uintptr_t& value)
+	{
+		value = 0;
+		if (!address)
+			return false;
+
+		return Proc.ReadBuffer(Conn, address, reinterpret_cast<BYTE*>(&value), sizeof(value));
+	}
+
+	bool TryReadLinkedListEntry(const Process& Proc, DMA_Connection* Conn, uintptr_t address, CLinkedListEntry& entry)
+	{
+		return address != 0 && Proc.ReadBuffer(Conn, address, reinterpret_cast<BYTE*>(&entry), sizeof(entry));
+	}
+
+	bool TryLoadGomFromPointerAddress(
+		DMA_Connection* Conn,
+		const Process& Proc,
+		uintptr_t gomPointerAddress,
+		uintptr_t& gomAddress,
+		uintptr_t& activeNodes,
+		uintptr_t& lastActiveNode)
+	{
+		gomAddress = 0;
+		activeNodes = 0;
+		lastActiveNode = 0;
+		if (!TryReadPointer(Proc, Conn, gomPointerAddress, gomAddress) || !gomAddress)
+			return false;
+
+		if (!TryReadPointer(Proc, Conn, gomAddress + Offsets::CGameObjectManager::pLastActiveNode, lastActiveNode))
+			return false;
+		if (!TryReadPointer(Proc, Conn, gomAddress + Offsets::CGameObjectManager::pActiveNodes, activeNodes))
+			return false;
+		if (!activeNodes || !lastActiveNode)
+			return false;
+
+		CLinkedListEntry activeEntry{};
+		CLinkedListEntry lastEntry{};
+		if (!TryReadLinkedListEntry(Proc, Conn, activeNodes, activeEntry))
+			return false;
+		if (!TryReadLinkedListEntry(Proc, Conn, lastActiveNode, lastEntry))
+			return false;
+		if (!activeEntry.pObject || !lastEntry.pObject)
+			return false;
+
+		return true;
+	}
+
+	uintptr_t FindGomPointerAddressFromSignature(DMA_Connection* Conn, const Process& Proc)
+	{
+		uintptr_t unityBase = 0;
+		size_t unitySize = 0;
+		if (!TryGetModuleRange(Conn, Proc, ConstStrings::Unity, unityBase, unitySize))
+			return 0;
+
+		auto signatureAddress = FindSignature(Conn, Proc, unityBase, unityBase + unitySize, kGomSignature);
+		if (!signatureAddress)
+			return 0;
+
+		auto rva = Proc.ReadMem<int32_t>(Conn, signatureAddress + 3);
+		return static_cast<uintptr_t>(signatureAddress + 7 + rva);
+	}
+}
 
 bool GOM::Initialize(DMA_Connection* Conn)
 {
@@ -13,21 +182,65 @@ bool GOM::Initialize(DMA_Connection* Conn)
 		ResetCache();
 		auto& Proc = EFT::GetProcess();
 
-		uintptr_t pGOMAddress = Proc.GetUnityAddress() + Offsets::pGOM;
-		GameObjectManagerAddress = Proc.ReadMem<uintptr_t>(Conn, pGOMAddress);
-		if (!GameObjectManagerAddress)
+		static DWORD s_GomCachePid = 0;
+		static uintptr_t s_GomPointerAddress = 0;
+		static bool s_GomPointerFromSignature = false;
+		auto TryLoadGom = [&](uintptr_t gomPointerAddress) -> bool
 		{
-			std::println("[EFT] GOM Address not found at 0x{:X}", pGOMAddress);
-			return false;
+			uintptr_t gomAddress = 0;
+			uintptr_t activeNodes = 0;
+			uintptr_t lastActiveNode = 0;
+			if (!TryLoadGomFromPointerAddress(Conn, Proc, gomPointerAddress, gomAddress, activeNodes, lastActiveNode))
+				return false;
+			GameObjectManagerAddress = gomAddress;
+			ActiveNodes = activeNodes;
+			LastActiveNode = lastActiveNode;
+			return true;
+		};
+
+		bool gomReady = false;
+		if (s_GomCachePid == Proc.GetPID() && s_GomPointerAddress)
+		{
+			gomReady = TryLoadGom(s_GomPointerAddress);
+			if (!gomReady)
+				s_GomPointerAddress = 0;
 		}
 
-		LastActiveNode = Proc.ReadMem<uintptr_t>(Conn, GameObjectManagerAddress + Offsets::CGameObjectManager::pLastActiveNode);
-		ActiveNodes = Proc.ReadMem<uintptr_t>(Conn, GameObjectManagerAddress + Offsets::CGameObjectManager::pActiveNodes);
-
-		if (!ActiveNodes || !LastActiveNode)
+		if (!gomReady)
 		{
-			std::println("[EFT] GOM Nodes pointers are null!");
-			return false;
+			uintptr_t gomPointerAddress = Proc.GetUnityAddress() + Offsets::pGOM;
+			gomReady = TryLoadGom(gomPointerAddress);
+			if (gomReady)
+			{
+				s_GomCachePid = Proc.GetPID();
+				s_GomPointerAddress = gomPointerAddress;
+				s_GomPointerFromSignature = false;
+			}
+		}
+
+		if (!gomReady)
+		{
+			std::println("[EFT] GOM read failed at hardcoded offset. Trying signature scan.");
+			auto signaturePointerAddress = FindGomPointerAddressFromSignature(Conn, Proc);
+			if (!signaturePointerAddress)
+			{
+				std::println("[EFT] GOM signature scan failed.");
+				return false;
+			}
+			gomReady = TryLoadGom(signaturePointerAddress);
+			if (!gomReady)
+			{
+				std::println("[EFT] GOM signature pointer invalid at 0x{:X}", signaturePointerAddress);
+				return false;
+			}
+			s_GomCachePid = Proc.GetPID();
+			s_GomPointerAddress = signaturePointerAddress;
+			s_GomPointerFromSignature = true;
+			std::println("[EFT] GOM located via signature at 0x{:X}", signaturePointerAddress);
+		}
+		else if (s_GomPointerFromSignature)
+		{
+			std::println("[EFT] GOM using cached signature address 0x{:X}", s_GomPointerAddress);
 		}
 
 		GetObjectAddresses(Conn, 40000);
@@ -78,6 +291,15 @@ void GOM::GetObjectAddresses(DMA_Connection* Conn, uint32_t MaxNodes)
 
 	// Track visited nodes to avoid duplicates when doing bidirectional traversal
 	std::unordered_set<uintptr_t> VisitedNodes;
+	bool loggedInvalidNode = false;
+	auto LogNodeFailure = [&](const char* direction, uintptr_t nodeAddress)
+	{
+		if (!loggedInvalidNode)
+		{
+			std::println("[EFT] GOM {} traversal failed at node 0x{:X}", direction, nodeAddress);
+			loggedInvalidNode = true;
+		}
+	};
 
 	// Forward traversal
 	uint32_t ForwardCount = 0;
@@ -86,44 +308,48 @@ void GOM::GetObjectAddresses(DMA_Connection* Conn, uint32_t MaxNodes)
 		if (ForwardCount >= MaxNodes) break;
 		if (VisitedNodes.contains(CurrentActiveNode)) break;
 
-		CLinkedListEntry NodeEntry = Proc.ReadMem<CLinkedListEntry>(Conn, CurrentActiveNode);
+		CLinkedListEntry NodeEntry{};
+		if (!TryReadLinkedListEntry(Proc, Conn, CurrentActiveNode, NodeEntry))
+		{
+			LogNodeFailure("forward", CurrentActiveNode);
+			break;
+		}
 		if (NodeEntry.pObject == 0) break;
 
 		VisitedNodes.insert(CurrentActiveNode);
 		m_ObjectAddresses.push_back(NodeEntry.pObject);
 
-		if (NodeEntry.pNextEntry == FirstNode || NodeEntry.pNextEntry == 0)
+		if (CurrentActiveNode == LastActiveNode || NodeEntry.pNextEntry == FirstNode || NodeEntry.pNextEntry == 0)
 			break;
 
 		CurrentActiveNode = NodeEntry.pNextEntry;
 		ForwardCount++;
 	}
 
-	// Backward traversal - start from ActiveNodes and go backwards
+	// Backward traversal - start from LastActiveNode and go backwards
 	uint32_t BackwardCount = 0;
-	CurrentActiveNode = ActiveNodes;
-
-	CLinkedListEntry StartEntry = Proc.ReadMem<CLinkedListEntry>(Conn, CurrentActiveNode);
-	if (StartEntry.pPreviousEntry != 0 && StartEntry.pPreviousEntry != FirstNode)
+	CurrentActiveNode = LastActiveNode;
+	while (CurrentActiveNode != 0)
 	{
-		CurrentActiveNode = StartEntry.pPreviousEntry;
-		while (CurrentActiveNode != 0)
+		if (BackwardCount >= MaxNodes) break;
+		if (VisitedNodes.contains(CurrentActiveNode)) break;
+
+		CLinkedListEntry NodeEntry{};
+		if (!TryReadLinkedListEntry(Proc, Conn, CurrentActiveNode, NodeEntry))
 		{
-			if (BackwardCount >= MaxNodes) break;
-			if (VisitedNodes.contains(CurrentActiveNode)) break;
-
-			CLinkedListEntry NodeEntry = Proc.ReadMem<CLinkedListEntry>(Conn, CurrentActiveNode);
-			if (NodeEntry.pObject == 0) break;
-
-			VisitedNodes.insert(CurrentActiveNode);
-			m_ObjectAddresses.push_back(NodeEntry.pObject);
-
-			if (NodeEntry.pPreviousEntry == FirstNode || NodeEntry.pPreviousEntry == 0)
-				break;
-
-			CurrentActiveNode = NodeEntry.pPreviousEntry;
-			BackwardCount++;
+			LogNodeFailure("backward", CurrentActiveNode);
+			break;
 		}
+		if (NodeEntry.pObject == 0) break;
+
+		VisitedNodes.insert(CurrentActiveNode);
+		m_ObjectAddresses.push_back(NodeEntry.pObject);
+
+		if (CurrentActiveNode == FirstNode || NodeEntry.pPreviousEntry == 0)
+			break;
+
+		CurrentActiveNode = NodeEntry.pPreviousEntry;
+		BackwardCount++;
 	}
 
 	NodeCount = (uint32_t)m_ObjectAddresses.size();

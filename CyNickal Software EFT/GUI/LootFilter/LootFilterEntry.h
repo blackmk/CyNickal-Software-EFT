@@ -14,7 +14,7 @@ struct LootFilterEntry
 {
 	std::string itemId;           // BSG item ID
 	std::string itemName;         // Display name (for UI)
-	LootFilterEntryType type;     // ImportantLoot or BlacklistedLoot
+	LootFilterEntryType type = LootFilterEntryType::ImportantLoot;  // ImportantLoot or BlacklistedLoot
 	bool enabled = true;          // Toggle without removing
 	ImU32 customColor = 0;        // Custom color (0 = inherit from tier)
 	std::string comment;          // User notes

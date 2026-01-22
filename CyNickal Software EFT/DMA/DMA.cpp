@@ -29,7 +29,13 @@ VMM_HANDLE DMA_Connection::GetHandle()
 
 bool DMA_Connection::EndConnection()
 {
-	this->~DMA_Connection();
+	if (m_VMMHandle)
+	{
+		VMMDLL_Close(m_VMMHandle);
+		m_VMMHandle = nullptr;
+		m_bConnected = false;
+		std::println("[DMA] Disconnected from DMA!");
+	}
 
 	return true;
 }

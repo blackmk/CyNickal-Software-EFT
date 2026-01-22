@@ -3,6 +3,7 @@
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
+#include <atomic>
 #include <mutex>
 #include <chrono>
 #include "QuestObjectiveType.h"
@@ -34,6 +35,17 @@ namespace Quest
 	class CQuestManager
 	{
 	public:
+		/// <summary>
+		/// Snapshot of quest data for UI rendering (lock-free reads)
+		/// </summary>
+		struct QuestSnapshot
+		{
+			std::unordered_map<std::string, QuestEntry> ActiveQuests;
+			std::unordered_set<std::string> QuestItemIds;
+			std::vector<QuestLocation> QuestLocations;
+			QuestSettings Settings;
+		};
+
 		static CQuestManager& GetInstance()
 		{
 			static CQuestManager instance;
@@ -52,34 +64,52 @@ namespace Quest
 		void Refresh(uintptr_t profileAddr);
 
 		/// <summary>
-		/// Get all currently active quests
+		/// Get all currently active quests (returns copy for thread safety)
 		/// </summary>
-		const std::unordered_map<std::string, QuestEntry>& GetActiveQuests() const
+		std::unordered_map<std::string, QuestEntry> GetActiveQuests() const
 		{
+			std::scoped_lock lock(m_Mutex);
 			return m_ActiveQuests;
 		}
 
 		/// <summary>
-		/// Get all quest item IDs we need to find
+		/// Get all quest item IDs we need to find (returns copy for thread safety)
 		/// </summary>
-		const std::unordered_set<std::string>& GetQuestItemIds() const
+		std::unordered_set<std::string> GetQuestItemIds() const
 		{
+			std::scoped_lock lock(m_Mutex);
 			return m_QuestItemIds;
 		}
 
 		/// <summary>
-		/// Get quest locations for current map
+		/// Get quest locations for current map (returns copy for thread safety)
 		/// </summary>
-		const std::vector<QuestLocation>& GetQuestLocations() const
+		std::vector<QuestLocation> GetQuestLocations() const
 		{
+			std::scoped_lock lock(m_Mutex);
 			return m_QuestLocations;
 		}
+
+		/// <summary>
+		/// Get quest settings snapshot (thread-safe copy)
+		/// </summary>
+		QuestSettings GetSettingsCopy() const
+		{
+			std::scoped_lock lock(m_Mutex);
+			return m_Settings;
+		}
+
+		/// <summary>
+		/// Get quest data snapshot for UI rendering
+		/// </summary>
+		QuestSnapshot GetSnapshot() const;
 
 		/// <summary>
 		/// Check if an item is a quest item we need
 		/// </summary>
 		bool IsQuestItem(const std::string& itemId) const
 		{
+			std::scoped_lock lock(m_Mutex);
 			if (!m_Settings.bHighlightQuestItems || !m_Settings.bEnabled)
 				return false;
 			return m_QuestItemIds.contains(itemId);
@@ -100,14 +130,14 @@ namespace Quest
 		/// </summary>
 		bool IsQuestEnabled(const std::string& questId) const
 		{
+			std::scoped_lock lock(m_Mutex);
 			return !m_Settings.BlacklistedQuests.contains(questId);
 		}
 
 		/// <summary>
-		/// Get quest settings (mutable for UI)
+		/// Update quest settings from UI/config
 		/// </summary>
-		QuestSettings& GetSettings() { return m_Settings; }
-		const QuestSettings& GetSettings() const { return m_Settings; }
+		void UpdateSettings(const QuestSettings& newSettings);
 
 		/// <summary>
 		/// Get quest database
@@ -145,6 +175,9 @@ namespace Quest
 		std::vector<QuestLocation> m_QuestLocations;
 		// Current map ID
 		std::string m_CurrentMapId;
+
+		mutable QuestSnapshot m_CachedSnapshot{};
+		mutable std::atomic<bool> m_bSnapshotDirty{ true };
 
 		// Refresh throttle
 		std::chrono::steady_clock::time_point m_LastRefresh;

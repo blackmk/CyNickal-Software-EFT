@@ -14,7 +14,7 @@ namespace Quest
 
 	void CQuestManager::Refresh(uintptr_t profileAddr)
 	{
-		if (!m_Settings.bEnabled || profileAddr == 0)
+		if (profileAddr == 0)
 			return;
 
 		// Throttle refresh rate
@@ -34,6 +34,8 @@ namespace Quest
 		try
 		{
 			std::scoped_lock lock(m_Mutex);
+			if (!m_Settings.bEnabled)
+				return;
 
 			// Read QuestsData list from profile
 			uintptr_t questsDataAddr = 0;
@@ -89,7 +91,7 @@ namespace Quest
 				if (!m_ActiveQuests.contains(questId))
 				{
 					m_ActiveQuests[questId] = QuestEntry(questId, taskDef->Name);
-					m_ActiveQuests[questId].bIsEnabled = IsQuestEnabled(questId);
+					m_ActiveQuests[questId].bIsEnabled = !m_Settings.BlacklistedQuests.contains(questId);
 				}
 
 				// Read completed conditions if quest is enabled
@@ -122,11 +124,49 @@ namespace Quest
 			// Update derived data
 			UpdateQuestItems();
 			UpdateQuestLocations();
+			m_bSnapshotDirty.store(true, std::memory_order_release);
 		}
 		catch (const std::exception& e)
 		{
 			std::cout << "[QuestManager] Error refreshing quests: " << e.what() << std::endl;
 		}
+	}
+
+	CQuestManager::QuestSnapshot CQuestManager::GetSnapshot() const
+	{
+		if (!m_bSnapshotDirty.load(std::memory_order_acquire))
+		{
+			return m_CachedSnapshot;
+		}
+
+		std::scoped_lock lock(m_Mutex);
+		m_CachedSnapshot = QuestSnapshot{
+			m_ActiveQuests,
+			m_QuestItemIds,
+			m_QuestLocations,
+			m_Settings
+		};
+		m_bSnapshotDirty.store(false, std::memory_order_release);
+		return m_CachedSnapshot;
+	}
+
+	void CQuestManager::UpdateSettings(const QuestSettings& newSettings)
+	{
+		std::scoped_lock lock(m_Mutex);
+		bool blacklistChanged = (m_Settings.BlacklistedQuests != newSettings.BlacklistedQuests);
+		m_Settings = newSettings;
+
+		if (blacklistChanged)
+		{
+			for (auto& [questId, quest] : m_ActiveQuests)
+			{
+				quest.bIsEnabled = !m_Settings.BlacklistedQuests.contains(questId);
+			}
+			UpdateQuestItems();
+			UpdateQuestLocations();
+		}
+
+		m_bSnapshotDirty.store(true, std::memory_order_release);
 	}
 
 	std::string CQuestManager::ReadQuestId(uintptr_t questDataAddr)
@@ -216,6 +256,7 @@ namespace Quest
 		{
 			m_CurrentMapId = mapId;
 			UpdateQuestLocations();
+			m_bSnapshotDirty.store(true, std::memory_order_release);
 		}
 	}
 
@@ -239,6 +280,7 @@ namespace Quest
 		// Refresh derived data
 		UpdateQuestItems();
 		UpdateQuestLocations();
+		m_bSnapshotDirty.store(true, std::memory_order_release);
 	}
 
 	void CQuestManager::ClearCache()
@@ -249,6 +291,7 @@ namespace Quest
 		m_QuestItemIds.clear();
 		m_QuestLocations.clear();
 		m_CurrentMapId.clear();
+		m_bSnapshotDirty.store(true, std::memory_order_release);
 	}
 
 	void CQuestManager::UpdateQuestItems()

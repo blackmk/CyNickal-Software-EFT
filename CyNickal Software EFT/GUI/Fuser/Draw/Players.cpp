@@ -100,13 +100,13 @@ void DrawESPPlayers::DrawHealthBar(ImDrawList* DrawList, const ImVec2& bMin, con
 	);
 }
 
-void DrawESPPlayers::DrawObservedPlayer(const CObservedPlayer& Player, const ImVec2& WindowPos, ImDrawList* DrawList, std::array<ProjectedBoneInfo, SKELETON_NUMBONES>& ProjectedBones, bool bForOptic)
+void DrawESPPlayers::DrawObservedPlayer(const CObservedPlayer& Player, const ImVec2& WindowPos, ImDrawList* DrawList, std::array<ProjectedBoneInfo, SKELETON_NUMBONES>& ProjectedBones, const Vector3& LocalPlayerPos, bool bForOptic)
 {
 	if (Player.IsInvalid())	return;
 	if (Player.m_pSkeleton == nullptr) return;
 
 	// Check distance against player type range limit
-	float distance = Player.GetBonePosition(EBoneIndex::Root).DistanceTo(m_LatestLocalPlayerPos);
+	float distance = Player.GetBonePosition(EBoneIndex::Root).DistanceTo(LocalPlayerPos);
 	float maxRange = GetPlayerRange(Player);
 	if (distance > maxRange) return;
 
@@ -156,7 +156,7 @@ void DrawESPPlayers::DrawObservedPlayer(const CObservedPlayer& Player, const ImV
 		DrawHealthBar(DrawList, bMin, bMax, healthPercent, healthColor);
 	}
 	if (bDistanceEnabled) {
-		std::string distText = std::format("[{:.0f}m]", Player.GetBonePosition(EBoneIndex::Root).DistanceTo(m_LatestLocalPlayerPos));
+		std::string distText = std::format("[{:.0f}m]", Player.GetBonePosition(EBoneIndex::Root).DistanceTo(LocalPlayerPos));
 		DrawTextAtPosition(DrawList, ImVec2(WindowPos.x + ProjectedBones[Sketon_MyIndicies[EBoneIndex::Root]].ScreenPos.x, bMax.y + 5.0f), distanceColor, distText);
 	}
 
@@ -170,14 +170,14 @@ void DrawESPPlayers::DrawObservedPlayer(const CObservedPlayer& Player, const ImV
 		DrawSkeleton(WindowPos, DrawList, ProjectedBones);
 }
 
-void DrawESPPlayers::DrawClientPlayer(const CClientPlayer& Player, const ImVec2& WindowPos, ImDrawList* DrawList, std::array<ProjectedBoneInfo, SKELETON_NUMBONES>& ProjectedBones, bool bForOptic)
+void DrawESPPlayers::DrawClientPlayer(const CClientPlayer& Player, const ImVec2& WindowPos, ImDrawList* DrawList, std::array<ProjectedBoneInfo, SKELETON_NUMBONES>& ProjectedBones, const Vector3& LocalPlayerPos, bool bForOptic)
 {
 	if (Player.IsInvalid())	return;
 	if (Player.IsLocalPlayer())	return;
 	if (Player.m_pSkeleton == nullptr) return;
 
 	// Check distance against player type range limit
-	float distance = Player.GetBonePosition(EBoneIndex::Root).DistanceTo(m_LatestLocalPlayerPos);
+	float distance = Player.GetBonePosition(EBoneIndex::Root).DistanceTo(LocalPlayerPos);
 	float maxRange = GetPlayerRange(Player);
 	if (distance > maxRange) return;
 
@@ -222,12 +222,12 @@ void DrawESPPlayers::DrawClientPlayer(const CClientPlayer& Player, const ImVec2&
 	}
 
 	if (bHealthEnabled) {
-		auto [healthPercent, healthColor] = GetHealthInfoFromTagStatus(0);
-		DrawHealthBar(DrawList, bMin, bMax, healthPercent, healthColor);
+		// CClientPlayer doesn't have health data - show gray "unknown" health bar
+		DrawHealthBar(DrawList, bMin, bMax, 1.0f, ImColor(128, 128, 128, 150));
 	}
 
 	if (bDistanceEnabled) {
-		std::string distText = std::format("[{:.0f}m]", Player.GetBonePosition(EBoneIndex::Root).DistanceTo(m_LatestLocalPlayerPos));
+		std::string distText = std::format("[{:.0f}m]", Player.GetBonePosition(EBoneIndex::Root).DistanceTo(LocalPlayerPos));
 		DrawTextAtPosition(DrawList, ImVec2(WindowPos.x + ProjectedBones[Sketon_MyIndicies[EBoneIndex::Root]].ScreenPos.x, bMax.y + 5.0f), distanceColor, distText);
 	}
 
@@ -247,10 +247,14 @@ void DrawESPPlayers::DrawAll(const ImVec2& WindowPos, ImDrawList* DrawList)
 
 	std::scoped_lock PlayerLock(PlayerList.m_Mut);
 
+	// Get local player position safely - default to zero if invalid
+	Vector3 LocalPlayerPos{};
 	auto LocalPlayer = PlayerList.GetLocalPlayer();
-	if (LocalPlayer == nullptr || LocalPlayer->IsInvalid()) return;
+	if (LocalPlayer && !LocalPlayer->IsInvalid())
+		LocalPlayerPos = LocalPlayer->GetBonePosition(EBoneIndex::Root);
 
-	m_LatestLocalPlayerPos = LocalPlayer->GetBonePosition(EBoneIndex::Root);
+	// Continue rendering even if local player temporarily invalid
+	// This prevents ESP breaking during raid transitions/respawns
 
 	auto bDrawOpticESP = DrawESPPlayers::bOpticESP && CameraList::IsScoped();
 	auto WindowSize = ImGui::GetWindowSize();
@@ -259,7 +263,7 @@ void DrawESPPlayers::DrawAll(const ImVec2& WindowPos, ImDrawList* DrawList)
 	if (PlayerList.m_Players.empty()) return;
 
 	for (auto& Player : PlayerList.m_Players)
-		std::visit([WindowPos, DrawList](auto& Player) { DrawESPPlayers::Draw(Player, WindowPos, DrawList); }, Player);
+		std::visit([WindowPos, DrawList, &LocalPlayerPos](auto& Player) { DrawESPPlayers::Draw(Player, WindowPos, DrawList, LocalPlayerPos); }, Player);
 
 	if (bDrawOpticESP)
 	{
@@ -267,7 +271,7 @@ void DrawESPPlayers::DrawAll(const ImVec2& WindowPos, ImDrawList* DrawList)
 		ImGui::GetWindowDrawList()->AddCircle(ImVec2(WindowPos.x + (WindowSize.x * 0.5f), WindowPos.y + (WindowSize.y * 0.5f)), OpticFOV + 2.0f, ImColor(255, 255, 255), 33, 2.f);
 
 		for (auto& Player : PlayerList.m_Players)
-			std::visit([WindowPos, DrawList](auto& Player) { DrawESPPlayers::DrawForOptic(Player, WindowPos, DrawList); }, Player);
+			std::visit([WindowPos, DrawList, &LocalPlayerPos](auto& Player) { DrawESPPlayers::DrawForOptic(Player, WindowPos, DrawList, LocalPlayerPos); }, Player);
 	}
 }
 
@@ -325,24 +329,24 @@ void DrawESPPlayers::DrawPlayerWeapon(const CHeldItem* pHands, const ImVec2& Win
 	LineNumber++;
 }
 
-void DrawESPPlayers::Draw(const CObservedPlayer& Player, const ImVec2& WindowPos, ImDrawList* DrawList)
+void DrawESPPlayers::Draw(const CObservedPlayer& Player, const ImVec2& WindowPos, ImDrawList* DrawList, const Vector3& LocalPlayerPos)
 {
-	DrawObservedPlayer(Player, WindowPos, DrawList, m_ProjectedBoneCache, false);
+	DrawObservedPlayer(Player, WindowPos, DrawList, m_ProjectedBoneCache, LocalPlayerPos, false);
 }
 
-void DrawESPPlayers::Draw(const CClientPlayer& Player, const ImVec2& WindowPos, ImDrawList* DrawList)
+void DrawESPPlayers::Draw(const CClientPlayer& Player, const ImVec2& WindowPos, ImDrawList* DrawList, const Vector3& LocalPlayerPos)
 {
-	DrawClientPlayer(Player, WindowPos, DrawList, m_ProjectedBoneCache, false);
+	DrawClientPlayer(Player, WindowPos, DrawList, m_ProjectedBoneCache, LocalPlayerPos, false);
 }
 
-void DrawESPPlayers::DrawForOptic(const CObservedPlayer& Player, const ImVec2& WindowPos, ImDrawList* DrawList)
+void DrawESPPlayers::DrawForOptic(const CObservedPlayer& Player, const ImVec2& WindowPos, ImDrawList* DrawList, const Vector3& LocalPlayerPos)
 {
-	DrawObservedPlayer(Player, WindowPos, DrawList, m_ProjectedBoneCache, true);
+	DrawObservedPlayer(Player, WindowPos, DrawList, m_ProjectedBoneCache, LocalPlayerPos, true);
 }
 
-void DrawESPPlayers::DrawForOptic(const CClientPlayer& Player, const ImVec2& WindowPos, ImDrawList* DrawList)
+void DrawESPPlayers::DrawForOptic(const CClientPlayer& Player, const ImVec2& WindowPos, ImDrawList* DrawList, const Vector3& LocalPlayerPos)
 {
-	DrawClientPlayer(Player, WindowPos, DrawList, m_ProjectedBoneCache, true);
+	DrawClientPlayer(Player, WindowPos, DrawList, m_ProjectedBoneCache, LocalPlayerPos, true);
 }
 
 void ConnectBones(const ProjectedBoneInfo& BoneA, const ProjectedBoneInfo& BoneB, const ImVec2& WindowPos, ImDrawList* DrawList, const ImColor& Color, float Thickness)

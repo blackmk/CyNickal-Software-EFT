@@ -25,7 +25,23 @@
       "Bash(cmd.exe /c \"type \\\\\"C:\\\\Users\\\\Eddium Ally\\\\Documents\\\\CyNickal-Software-EFT-master\\\\CyNickal Software EFT\\\\GUI\\\\Radar\\\\Widgets\\\\AimviewWidget.cpp\\\\\" | findstr /n \\\\\"WorldToAimview\\\\\"\" 2>&1:*)",
       "Edit(*)",
       "Write(*)",
-      "Bash(*)"
+      "Bash(*)",
+      "Bash(cmd //c:*)",
+      "Bash(powershell.exe -Command \"cd ''C:\\\\Users\\\\Eddium Ally\\\\Documents\\\\CyNickal-Software-EFT-master''; cmd.exe /c build.bat 2>&1\")",
+      "Bash(powershell.exe -Command \"& ''C:\\\\Users\\\\Eddium Ally\\\\Documents\\\\CyNickal-Software-EFT-master\\\\build.bat'' 2>&1\")",
+      "Bash(cmd.exe /c \"cd /d \"\"C:\\\\Users\\\\Eddium Ally\\\\Documents\\\\CyNickal-Software-EFT-master\"\" && build.bat\")",
+      "Bash(cmd.exe /c \"cd /d \"\"C:\\\\Users\\\\Eddium Ally\\\\Documents\\\\CyNickal-Software-EFT-master\"\" && build.bat 2>&1\")",
+      "Bash(powershell.exe -Command \"Set-Location ''C:\\\\Users\\\\Eddium Ally\\\\Documents\\\\CyNickal-Software-EFT-master''; cmd /c build.bat 2>&1\")",
+      "Bash(cmd /c build.bat)",
+      "Bash(./build.bat Release x64)",
+      "Bash(grep:*)",
+      "Bash(cmd.exe /c \"cd /d \"\"C:\\\\Users\\\\Eddium Ally\\\\Documents\\\\CyNickal-Software-EFT-master\"\" && build.bat Release x64\")",
+      "Bash(cmd /c build.bat Release x64)",
+      "Bash(where:*)",
+      "Bash(powershell.exe -ExecutionPolicy Bypass -Command \"cd ''C:\\\\Users\\\\Eddium Ally\\\\Documents\\\\CyNickal-Software-EFT-master''; & .\\\\build.bat Release x64\")",
+      "Bash(cmd /c:*)",
+      "Bash(cmd.exe /c build.bat Release x64)",
+      "Bash(powershell.exe -Command \"& { cd ''C:\\\\Users\\\\Eddium Ally\\\\Documents\\\\CyNickal-Software-EFT-master''; & .\\\\build.bat Release x64 2>&1 | Select-Object -First 50 }\")"
     ]
   }
 }

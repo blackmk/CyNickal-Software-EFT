@@ -463,10 +463,10 @@ static void RenderAimbotContent()
 		
 		if (trajectoryEnabled)
 		{
-			Aimbot::bDrawAimline = false; // Disable aimline automatically when trajectory is active
-			
+			// Don't mutate user preference - just show disabled UI
 			ImGui::BeginDisabled(true);
-			CustomToggle("Draw Weapon Aimline", &Aimbot::bDrawAimline);
+			bool tempVal = Aimbot::bDrawAimline; // Show current state but disabled
+			CustomToggle("Draw Weapon Aimline", &tempVal);
 			ImGui::EndDisabled();
 			if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled))
 				ImGui::SetTooltip("Disabled: Trajectory visualization already shows aim direction.");
@@ -804,6 +804,7 @@ static void RenderWorldESPContent()
 			static std::vector<MonitorData> monitorList;
 			auto RefreshMonitors = [&]()
 			{
+				MonitorHelper::RefreshMonitorCache();
 				monitorList = MonitorHelper::GetAllMonitors();
 				if (Fuser::m_SelectedMonitor < 0 || Fuser::m_SelectedMonitor >= static_cast<int>(monitorList.size()))
 				{
@@ -1133,54 +1134,73 @@ static void RenderRadarConfigContent()
 		BeginPanel("Quest Helper", "Track quest objectives");
 
 		auto& questMgr = Quest::CQuestManager::GetInstance();
-		auto& settings = questMgr.GetSettings();
 
-		CustomToggle("Enable Quest Helper", &settings.bEnabled);
+		static Quest::CQuestManager::QuestSnapshot s_CachedSnapshot{};
+		static std::chrono::steady_clock::time_point s_LastUpdate{};
+		auto now = std::chrono::steady_clock::now();
+		if (s_LastUpdate == std::chrono::steady_clock::time_point{} ||
+			now - s_LastUpdate > std::chrono::milliseconds(100))
+		{
+			s_CachedSnapshot = questMgr.GetSnapshot();
+			s_LastUpdate = now;
+		}
+
+		auto settings = s_CachedSnapshot.Settings;
+		bool settingsChanged = false;
+
+		settingsChanged |= CustomToggle("Enable Quest Helper", &settings.bEnabled);
 
 		if (settings.bEnabled)
 		{
 			ImGui::Spacing();
-			CustomToggle("Show Quest Locations", &settings.bShowQuestLocations);
-			CustomToggle("Highlight Quest Items", &settings.bHighlightQuestItems);
-			CustomToggle("Show Quest Panel", &settings.bShowQuestPanel);
+			settingsChanged |= CustomToggle("Show Quest Locations", &settings.bShowQuestLocations);
+			settingsChanged |= CustomToggle("Highlight Quest Items", &settings.bHighlightQuestItems);
+			settingsChanged |= CustomToggle("Show Quest Panel", &settings.bShowQuestPanel);
 
 			ImGui::Spacing();
 			ImGui::Separator();
 			ImGui::Spacing();
 
 			ImGui::Text("Quest Marker Size");
+			float markerSize = settings.fQuestMarkerSize;
 			CustomSlider("##QuestMarkerSize", &settings.fQuestMarkerSize, 4.0f, 20.0f, "%.1f px");
+			settingsChanged |= (markerSize != settings.fQuestMarkerSize);
 
 			ImGui::Spacing();
 
 			// Quest location color picker
 			float qCol[4] = { settings.QuestLocationColor.x, settings.QuestLocationColor.y,
-			                  settings.QuestLocationColor.z, settings.QuestLocationColor.w };
+				              settings.QuestLocationColor.z, settings.QuestLocationColor.w };
 			ImGui::Text("Quest Marker Color");
 			if (ImGui::ColorEdit4("##QuestColor", qCol, ImGuiColorEditFlags_NoInputs))
 			{
 				settings.QuestLocationColor = ImVec4(qCol[0], qCol[1], qCol[2], qCol[3]);
+				settingsChanged = true;
 			}
 
 			ImGui::Spacing();
 			ImGui::Separator();
 			ImGui::Spacing();
 
-			// Active quests list
-			std::scoped_lock lk(questMgr.GetMutex());
-			const auto& activeQuests = questMgr.GetActiveQuests();
+			// Active quests list (snapshot cached)
+			auto& activeQuests = s_CachedSnapshot.ActiveQuests;
 
 			ImGui::Text("Active Quests: %zu", activeQuests.size());
 
 			if (!activeQuests.empty())
 			{
 				ImGui::BeginChild("QuestList", ImVec2(0, 150), true);
-				for (const auto& [questId, quest] : activeQuests)
+				for (auto& [questId, quest] : activeQuests)
 				{
 					bool enabled = quest.bIsEnabled;
 					if (ImGui::Checkbox(("##qe_" + questId).c_str(), &enabled))
 					{
 						questMgr.SetQuestEnabled(questId, enabled);
+						quest.bIsEnabled = enabled;
+						if (enabled)
+							settings.BlacklistedQuests.erase(questId);
+						else
+							settings.BlacklistedQuests.insert(questId);
 					}
 					ImGui::SameLine();
 					ImGui::Text("%s", quest.Name.c_str());
@@ -1196,8 +1216,14 @@ static void RenderRadarConfigContent()
 			ImGui::Spacing();
 
 			// Quest locations count
-			const auto& questLocs = questMgr.GetQuestLocations();
+			const auto& questLocs = s_CachedSnapshot.QuestLocations;
 			ImGui::Text("Quest Markers on Map: %zu", questLocs.size());
+		}
+
+		s_CachedSnapshot.Settings = settings;
+		if (settingsChanged)
+		{
+			questMgr.UpdateSettings(settings);
 		}
 
 		EndPanel();

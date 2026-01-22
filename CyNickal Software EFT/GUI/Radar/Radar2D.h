@@ -15,6 +15,9 @@
 class CPlayer;
 class CObservedLootItem;
 class CExfilPoint;
+class CRegisteredPlayers;
+class CLootList;
+class CExfilController;
 struct ID3D11ShaderResourceView;
 
 // Rasterized map layer texture
@@ -147,12 +150,15 @@ private:
 	                          const ImVec2& canvasMin, const ImVec2& canvasMax);
 	
 	// Draw entities
-	static void DrawPlayers(ImDrawList* drawList, const MapParams& params, 
-	                        const ImVec2& canvasMin, const ImVec2& canvasMax);
+	static void DrawPlayers(ImDrawList* drawList, const MapParams& params,
+	                        const ImVec2& canvasMin, const ImVec2& canvasMax,
+	                        CRegisteredPlayers* playerList);
 	static void DrawLoot(ImDrawList* drawList, const MapParams& params,
-	                     const ImVec2& canvasMin, const ImVec2& canvasMax);
+	                     const ImVec2& canvasMin, const ImVec2& canvasMax,
+	                     CLootList* lootList);
 	static void DrawExfils(ImDrawList* drawList, const MapParams& params,
-	                       const ImVec2& canvasMin, const ImVec2& canvasMax);
+	                       const ImVec2& canvasMin, const ImVec2& canvasMax,
+	                       CExfilController* exfilController);
 	static void DrawQuestMarkers(ImDrawList* drawList, const MapParams& params,
 	                             const ImVec2& canvasMin, const ImVec2& canvasMax);
 	static void DrawLocalPlayer(ImDrawList* drawList, const MapParams& params, const ImVec2& canvasMin);

@@ -17,7 +17,7 @@ private:
 	std::unordered_map<std::string, uintptr_t> m_Modules;
 
 public:
-	bool GetProcessInfo(DMA_Connection* Conn);
+	bool GetProcessInfo(DMA_Connection* Conn, int maxRetries = 60);
 	const uintptr_t GetBaseAddress() const;
 	const uintptr_t GetUnityAddress() const;
 	const uintptr_t GetAssemblyBase() const;
@@ -25,7 +25,7 @@ public:
 	const uintptr_t GetModuleAddress(const std::string& ModuleName);
 
 private:
-	bool PopulateModules(DMA_Connection* Conn);
+	bool PopulateModules(DMA_Connection* Conn, int maxRetries = 60);
 
 public:
 	template<typename T> inline T ReadMem(DMA_Connection* Conn, uintptr_t Address) const

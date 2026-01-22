@@ -169,7 +169,7 @@ void CFirearmManager::UpdateBallistics()
 
 		VMMDLL_MemReadEx(Conn->GetHandle(), PID, ammoTemplate + Offsets::CAmmoTemplate::BulletMassGram,
 			reinterpret_cast<PBYTE>(&mass), sizeof(float), nullptr, VMMDLL_FLAG_NOCACHE);
-		VMMDLL_MemReadEx(Conn->GetHandle(), PID, ammoTemplate + Offsets::CAmmoTemplate::BulletDiameterMilimeters,
+		VMMDLL_MemReadEx(Conn->GetHandle(), PID, ammoTemplate + Offsets::CAmmoTemplate::BulletDiameterMillimeters,
 			reinterpret_cast<PBYTE>(&diam), sizeof(float), nullptr, VMMDLL_FLAG_NOCACHE);
 		VMMDLL_MemReadEx(Conn->GetHandle(), PID, ammoTemplate + Offsets::CAmmoTemplate::BallisticCoefficient,
 			reinterpret_cast<PBYTE>(&bc), sizeof(float), nullptr, VMMDLL_FLAG_NOCACHE);

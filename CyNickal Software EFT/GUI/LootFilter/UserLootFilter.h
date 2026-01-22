@@ -101,26 +101,26 @@ struct UserLootFilter
 			entries.end());
 	}
 
-	// Get all important items
-	std::vector<const LootFilterEntry*> GetImportantItems() const
+	// Get all important items (returns copies to avoid dangling pointers if entries vector is modified)
+	std::vector<LootFilterEntry> GetImportantItems() const
 	{
-		std::vector<const LootFilterEntry*> result;
+		std::vector<LootFilterEntry> result;
 		for (const auto& entry : entries)
 		{
-			if (entry.type == LootFilterEntryType::ImportantLoot)
-				result.push_back(&entry);
+			if (entry.enabled && entry.type == LootFilterEntryType::ImportantLoot)
+				result.push_back(entry);  // Copy, not pointer
 		}
 		return result;
 	}
 
-	// Get all blacklisted items
-	std::vector<const LootFilterEntry*> GetBlacklistedItems() const
+	// Get all blacklisted items (returns copies to avoid dangling pointers if entries vector is modified)
+	std::vector<LootFilterEntry> GetBlacklistedItems() const
 	{
-		std::vector<const LootFilterEntry*> result;
+		std::vector<LootFilterEntry> result;
 		for (const auto& entry : entries)
 		{
-			if (entry.type == LootFilterEntryType::BlacklistedLoot)
-				result.push_back(&entry);
+			if (entry.enabled && entry.type == LootFilterEntryType::BlacklistedLoot)
+				result.push_back(entry);  // Copy, not pointer
 		}
 		return result;
 	}

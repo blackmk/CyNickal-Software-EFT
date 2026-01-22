@@ -33,3 +33,8 @@ Thumbs.db
 build_output.txt
 Cleanup.bat
 nul
+
+## Claude/OpenCode local settings ##
+.claude/settings.local.json
+quick_build.bat
+quick_build.ps1

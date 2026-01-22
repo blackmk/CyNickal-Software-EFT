@@ -3,7 +3,7 @@
 #include "DMA/Input Manager.h"
 #include "Game/Camera List/Camera List.h"
 #include "GUI/Fuser/Fuser.h"
-#include "GUI/Keybinds/Keybinds.h"	
+#include "GUI/Keybinds/Keybinds.h"
 #include "Game/EFT.h"
 #include "Makcu/MyMakcu.h"
 #include "Input/KmboxNetController.h"
@@ -14,6 +14,7 @@
 #include <type_traits>
 #include "Game/Enums/EBoneIndex.h"
 #include "Game/Classes/Players/CClientPlayer/CClientPlayer.h"
+#include "Game/Classes/Players/CObservedPlayer/CObservedPlayer.h"
 #include "Game/Ballistics/Ballistics.h"
 
 
@@ -193,6 +194,13 @@ template<typename T>
 static bool ShouldTargetPlayer(const T& player)
 {
 	if (player.IsLocalPlayer()) return false;
+
+	// Exclude dying/dead players (only CObservedPlayer has this status)
+	if constexpr (std::is_same_v<T, CObservedPlayer>)
+	{
+		if (player.IsInCondition(ETagStatus::Dying))
+			return false;
+	}
 
 	if (player.IsBoss()) return Aimbot::bTargetBoss;
 	if (player.IsRaider()) return Aimbot::bTargetRaider;

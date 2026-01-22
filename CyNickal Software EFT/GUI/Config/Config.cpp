@@ -246,6 +246,7 @@ json Config::SerializeConfig() {
 	j["Fuser"] = {
 		{"bSettings", Fuser::bSettings},
 		{"bMasterToggle", Fuser::bMasterToggle},
+		{"bRequireRaidForESP", Fuser::bRequireRaidForESP},
 		{"SelectedMonitor", Fuser::m_SelectedMonitor},
 		{"ScreenSize", {Fuser::m_ScreenSize.x, Fuser::m_ScreenSize.y}},
 
@@ -300,7 +301,7 @@ json Config::SerializeConfig() {
 	// Serialize Quest Helper settings (Phase 3)
 	{
 		auto& questMgr = Quest::CQuestManager::GetInstance();
-		const auto& settings = questMgr.GetSettings();
+		const auto settings = questMgr.GetSettingsCopy();
 
 		// Convert blacklisted quests set to JSON array
 		json blacklistedJson = json::array();
@@ -600,11 +601,6 @@ void Config::DeserializeConfig(const json& j) {
 		if (aimbotTable.contains("eTargetingMode")) {
 			Aimbot::eTargetingMode = static_cast<ETargetingMode>(aimbotTable["eTargetingMode"].get<int>());
 		}
-
-
-		if (aimbotTable.contains("eTargetingMode")) {
-			Aimbot::eTargetingMode = static_cast<ETargetingMode>(aimbotTable["eTargetingMode"].get<int>());
-		}
 		// Prediction
 		if (aimbotTable.contains("bEnablePrediction")) {
 			Aimbot::bEnablePrediction = aimbotTable["bEnablePrediction"].get<bool>();
@@ -651,6 +647,9 @@ void Config::DeserializeConfig(const json& j) {
 		}
 		if (fuserTable.contains("bMasterToggle")) {
 			Fuser::bMasterToggle = fuserTable["bMasterToggle"].get<bool>();
+		}
+		if (fuserTable.contains("bRequireRaidForESP")) {
+			Fuser::bRequireRaidForESP = fuserTable["bRequireRaidForESP"].get<bool>();
 		}
 		if (fuserTable.contains("SelectedMonitor")) {
 			Fuser::m_SelectedMonitor = fuserTable["SelectedMonitor"].get<int>();
@@ -744,7 +743,7 @@ void Config::DeserializeConfig(const json& j) {
 	if (j.contains("QuestHelper")) {
 		const auto& qh = j["QuestHelper"];
 		auto& questMgr = Quest::CQuestManager::GetInstance();
-		auto& settings = questMgr.GetSettings();
+		auto settings = questMgr.GetSettingsCopy();
 
 		if (qh.contains("bEnabled")) settings.bEnabled = qh["bEnabled"].get<bool>();
 		if (qh.contains("bShowQuestLocations")) settings.bShowQuestLocations = qh["bShowQuestLocations"].get<bool>();
@@ -768,6 +767,8 @@ void Config::DeserializeConfig(const json& j) {
 				settings.BlacklistedQuests.insert(questId.get<std::string>());
 			}
 		}
+
+		questMgr.UpdateSettings(settings);
 	}
 
 	// Deserialize widgets

@@ -203,12 +203,14 @@ bool CUnityTransform::CompleteInit()
 
 	// Step 3: Read indices array
 	m_Indices.resize(static_cast<size_t>(m_Index) + 1);
+	DWORD indicesBytesRead = 0;
 	VMMDLL_MemReadEx(Conn->GetHandle(), PID, m_IndicesAddress,
 		reinterpret_cast<PBYTE>(m_Indices.data()), sizeof(uint32_t) * m_Indices.size(),
-		nullptr, VMMDLL_FLAG_NOCACHE);
+		&indicesBytesRead, VMMDLL_FLAG_NOCACHE);
 
-	// Validate indices
-	if (m_Indices.empty() || m_Indices[m_Index] > 4000)
+	// Validate indices read and content
+	if (indicesBytesRead != sizeof(uint32_t) * m_Indices.size() ||
+		m_Indices.empty() || m_Indices[m_Index] > 4000)
 	{
 		SetInvalid();
 		return false;
@@ -217,16 +219,24 @@ bool CUnityTransform::CompleteInit()
 	// Step 4: Read vertices array
 	size_t requiredVertices = static_cast<size_t>(m_Indices[m_Index]) + 1;
 	m_Vertices.resize(requiredVertices);
+	DWORD verticesBytesRead = 0;
 	VMMDLL_MemReadEx(Conn->GetHandle(), PID, m_VerticesAddress,
 		reinterpret_cast<PBYTE>(m_Vertices.data()), sizeof(VertexEntry) * m_Vertices.size(),
-		nullptr, VMMDLL_FLAG_NOCACHE);
+		&verticesBytesRead, VMMDLL_FLAG_NOCACHE);
+
+	if (verticesBytesRead != sizeof(VertexEntry) * m_Vertices.size())
+	{
+		SetInvalid();
+		return false;
+	}
 
 	return true;
 }
 
 bool CUnityTransform::SyncUpdate()
 {
-	if (IsInvalid() || m_Indices.empty() || !m_VerticesAddress)
+	if (IsInvalid() || m_Indices.empty() || !m_VerticesAddress ||
+		static_cast<size_t>(m_Index) >= m_Indices.size())
 		return false;
 
 	auto Conn = DMA_Connection::GetInstance();

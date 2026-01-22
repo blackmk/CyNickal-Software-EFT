@@ -21,6 +21,8 @@ struct Vector3
 	}
 	Vector3 operator/(float scalar) const
 	{
+		if (scalar == 0.0f)
+			return *this;
 		return Vector3{ x / scalar, y / scalar, z / scalar };
 	}
 

@@ -3,14 +3,16 @@
 
 BOOL CALLBACK MonitorEnumProc(HMONITOR hMonitor, HDC hdcMonitor, LPRECT lprcMonitor, LPARAM dwData) {
     auto* monitors = reinterpret_cast<std::vector<MonitorData>*>(dwData);
-    MonitorData data;
-    data.hMonitor = hMonitor;
-    data.rcMonitor = *lprcMonitor;
-    data.index = static_cast<int>(monitors->size());
-
+    
     MONITORINFOEXA mi;
     mi.cbSize = sizeof(mi);
+    
+    // Only add monitor if we can get its info successfully
     if (GetMonitorInfoA(hMonitor, &mi)) {
+        MonitorData data;
+        data.hMonitor = hMonitor;
+        data.rcMonitor = *lprcMonitor;
+        data.index = static_cast<int>(monitors->size());
         data.rcWork = mi.rcWork;
         data.isPrimary = (mi.dwFlags & MONITORINFOF_PRIMARY) != 0;
         data.friendlyName = "Monitor " + std::to_string(data.index + 1);
@@ -20,16 +22,34 @@ BOOL CALLBACK MonitorEnumProc(HMONITOR hMonitor, HDC hdcMonitor, LPRECT lprcMoni
         int height = abs(data.rcMonitor.bottom - data.rcMonitor.top);
         data.friendlyName += " (" + std::to_string(width) + "x" + std::to_string(height) + ")";
         if (data.isPrimary) data.friendlyName += " [Primary]";
+        
+        monitors->push_back(data);
     }
-
-    monitors->push_back(data);
+    // Skip monitors we can't get info for
     return TRUE;
 }
 
 std::vector<MonitorData> MonitorHelper::GetAllMonitors() {
-    std::vector<MonitorData> monitors;
-    EnumDisplayMonitors(NULL, NULL, MonitorEnumProc, reinterpret_cast<LPARAM>(&monitors));
-    return monitors;
+	std::scoped_lock lock(s_CacheMutex);
+	auto now = std::chrono::steady_clock::now();
+	bool needsRefresh = s_CachedMonitors.empty() || (now - s_LastRefresh) > CACHE_DURATION;
+	if (needsRefresh) {
+		s_CachedMonitors = EnumerateMonitorsInternal();
+		s_LastRefresh = now;
+	}
+	return s_CachedMonitors;
+}
+
+void MonitorHelper::RefreshMonitorCache() {
+	std::scoped_lock lock(s_CacheMutex);
+	s_CachedMonitors = EnumerateMonitorsInternal();
+	s_LastRefresh = std::chrono::steady_clock::now();
+}
+
+std::vector<MonitorData> MonitorHelper::EnumerateMonitorsInternal() {
+	std::vector<MonitorData> monitors;
+	EnumDisplayMonitors(NULL, NULL, MonitorEnumProc, reinterpret_cast<LPARAM>(&monitors));
+	return monitors;
 }
 
 void MonitorHelper::MoveWindowToMonitor(HWND hWnd, int monitorIndex) {

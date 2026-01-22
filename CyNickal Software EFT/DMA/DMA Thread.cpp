@@ -70,7 +70,8 @@ void DMA_Thread_Main()
 	CTimer Loot_Update(std::chrono::seconds(5), [&Conn]() {
 		try
 		{
-			if (!EFT::IsInRaid() || !EFT::pGameWorld || !EFT::pGameWorld->m_pLootList)
+			auto gameWorld = EFT::GetGameWorld();
+			if (!EFT::IsInRaid() || !gameWorld || !gameWorld->m_pLootList)
 				return;
 
 			// Check if this is the first load after entering a raid
@@ -92,12 +93,13 @@ void DMA_Thread_Main()
 		}
 	});
 
-	CTimer GameWorld_Retry(std::chrono::seconds(2), [&Conn]() {
+	CTimer GameWorld_Retry(std::chrono::seconds(4), [&Conn]() {
 		try
 		{
-			if (EFT::IsGameWorldInitialized())
+			if (EFT::IsInRaid())
 				return;
 
+			std::println("[DMA Thread] Not in raid. Scanning for GameWorld...");
 			if (EFT::TryMakeNewGameWorld(Conn))
 			{
 				std::println("[DMA Thread] LocalGameWorld initialized successfully!");

@@ -1,8 +1,13 @@
 #include "pch.h"
 #include "Database/ItemDatabase.h"
 #include "../../Dependencies/nlohmann/json.hpp"
+#include <mutex>
 
 using json = nlohmann::json;
+
+// Thread-safe initialization
+static std::once_flag s_initFlag;
+static bool s_initResult = false;
 
 // Category checking helpers
 bool ItemData::IsMeds() const
@@ -100,71 +105,73 @@ bool ItemData::IsBarter() const
 
 bool ItemDatabase::Initialize(const std::string& jsonPath)
 {
-	if (s_initialized)
-		return true;
-
-	std::ifstream file(jsonPath);
-	if (!file.is_open())
-	{
-		printf("[ItemDatabase] Failed to open: %s\n", jsonPath.c_str());
-		return false;
-	}
-
-	try
-	{
-		json data = json::parse(file);
-		
-		if (!data.contains("items") || !data["items"].is_array())
+	std::call_once(s_initFlag, [&jsonPath]() {
+		std::ifstream file(jsonPath);
+		if (!file.is_open())
 		{
-			printf("[ItemDatabase] Invalid JSON format - missing 'items' array\n");
-			return false;
+			printf("[ItemDatabase] Failed to open: %s\n", jsonPath.c_str());
+			s_initResult = false;
+			return;
 		}
 
-		for (const auto& item : data["items"])
+		try
 		{
-			ItemData itemData;
+			json data = json::parse(file);
 			
-			if (item.contains("bsgID") && item["bsgID"].is_string())
-				itemData.bsgId = item["bsgID"].get<std::string>();
-			else
-				continue; // Skip items without valid ID
-			
-			if (item.contains("name") && item["name"].is_string())
-				itemData.name = item["name"].get<std::string>();
-			
-			if (item.contains("shortName") && item["shortName"].is_string())
-				itemData.shortName = item["shortName"].get<std::string>();
-			
-			if (item.contains("price") && item["price"].is_number())
-				itemData.price = item["price"].get<int32_t>();
-			
-			if (item.contains("fleaPrice") && item["fleaPrice"].is_number())
-				itemData.fleaPrice = item["fleaPrice"].get<int32_t>();
-			
-			if (item.contains("slots") && item["slots"].is_number())
-				itemData.slots = item["slots"].get<int32_t>();
-			
-			if (item.contains("categories") && item["categories"].is_array())
+			if (!data.contains("items") || !data["items"].is_array())
 			{
-				for (const auto& cat : item["categories"])
-				{
-					if (cat.is_string())
-						itemData.categories.push_back(cat.get<std::string>());
-				}
+				printf("[ItemDatabase] Invalid JSON format - missing 'items' array\n");
+				s_initResult = false;
+				return;
 			}
 
-			s_items[itemData.bsgId] = std::move(itemData);
-		}
+			for (const auto& item : data["items"])
+			{
+				ItemData itemData;
+				
+				if (item.contains("bsgID") && item["bsgID"].is_string())
+					itemData.bsgId = item["bsgID"].get<std::string>();
+				else
+					continue; // Skip items without valid ID
+				
+				if (item.contains("name") && item["name"].is_string())
+					itemData.name = item["name"].get<std::string>();
+				
+				if (item.contains("shortName") && item["shortName"].is_string())
+					itemData.shortName = item["shortName"].get<std::string>();
+				
+				if (item.contains("price") && item["price"].is_number())
+					itemData.price = item["price"].get<int32_t>();
+				
+				if (item.contains("fleaPrice") && item["fleaPrice"].is_number())
+					itemData.fleaPrice = item["fleaPrice"].get<int32_t>();
+				
+				if (item.contains("slots") && item["slots"].is_number())
+					itemData.slots = item["slots"].get<int32_t>();
+				
+				if (item.contains("categories") && item["categories"].is_array())
+				{
+					for (const auto& cat : item["categories"])
+					{
+						if (cat.is_string())
+							itemData.categories.push_back(cat.get<std::string>());
+					}
+				}
 
-		s_initialized = true;
-		printf("[ItemDatabase] Loaded %zu items from database\n", s_items.size());
-		return true;
-	}
-	catch (const json::exception& e)
-	{
-		printf("[ItemDatabase] JSON parse error: %s\n", e.what());
-		return false;
-	}
+				s_items[itemData.bsgId] = std::move(itemData);
+			}
+
+			s_initialized = true;
+			s_initResult = true;
+			printf("[ItemDatabase] Loaded %zu items from database\n", s_items.size());
+		}
+		catch (const json::exception& e)
+		{
+			printf("[ItemDatabase] JSON parse error: %s\n", e.what());
+			s_initResult = false;
+		}
+	});
+	return s_initResult;
 }
 
 const ItemData* ItemDatabase::GetItem(const std::string& bsgId)

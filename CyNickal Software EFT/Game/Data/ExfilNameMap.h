@@ -16,7 +16,8 @@ namespace ExfilNames
 		size_t operator()(const std::string& str) const
 		{
 			std::string lower = str;
-			std::transform(lower.begin(), lower.end(), lower.begin(), ::tolower);
+			std::transform(lower.begin(), lower.end(), lower.begin(),
+				[](unsigned char c) { return std::tolower(c); });
 			size_t hash = 0;
 			for (char c : lower)
 				hash = hash * 31 + c;
@@ -31,7 +32,8 @@ namespace ExfilNames
 			if (lhs.size() != rhs.size()) return false;
 			for (size_t i = 0; i < lhs.size(); ++i)
 			{
-				if (std::tolower(lhs[i]) != std::tolower(rhs[i]))
+				if (std::tolower(static_cast<unsigned char>(lhs[i])) != 
+					std::tolower(static_cast<unsigned char>(rhs[i])))
 					return false;
 			}
 			return true;

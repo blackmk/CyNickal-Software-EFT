@@ -25,11 +25,12 @@ void DrawESPLoot::DrawAll(const ImVec2& WindowPos, ImDrawList* DrawList)
 	if (!bMasterToggle) return;
 
 	// Must be in raid with valid GameWorld and LootList
-	if (!EFT::IsInRaid() || !EFT::pGameWorld) return;
-	if (!EFT::pGameWorld->m_pLootList) return;
-	if (!EFT::pGameWorld->m_pLootList->IsInitialized()) return;
+	auto gameWorld = EFT::GetGameWorld();
+	if (!EFT::IsInRaid() || !gameWorld) return;
+	if (!gameWorld->m_pLootList || !gameWorld->m_pRegisteredPlayers) return;
+	if (!gameWorld->m_pLootList->IsInitialized()) return;
 
-	auto& PlayerList = EFT::GetRegisteredPlayers();
+	auto& PlayerList = *gameWorld->m_pRegisteredPlayers;
 
 	std::scoped_lock PlayerLock(PlayerList.m_Mut);
 
@@ -61,7 +62,10 @@ void DrawESPLoot::DrawAllItems(const ImVec2& WindowPos, ImDrawList* DrawList, co
 {
 	if (!bItemToggle) return;
 
-	auto& LootList = EFT::GetLootList();
+	auto gameWorld = EFT::GetGameWorld();
+	if (!gameWorld || !gameWorld->m_pLootList) return;
+
+	auto& LootList = *gameWorld->m_pLootList;
 	auto& ObservedItems = LootList.m_ObservedItems;
 
 	std::scoped_lock LootLock(ObservedItems.m_Mut);
@@ -74,7 +78,10 @@ void DrawESPLoot::DrawAllContainers(const ImVec2& WindowPos, ImDrawList* DrawLis
 {
 	if (!bContainerToggle) return;
 
-	auto& LootList = EFT::GetLootList();
+	auto gameWorld = EFT::GetGameWorld();
+	if (!gameWorld || !gameWorld->m_pLootList) return;
+
+	auto& LootList = *gameWorld->m_pLootList;
 	auto& LootableContainers = LootList.m_LootableContainers;
 
 	std::scoped_lock ContainerLock(LootableContainers.m_Mut);
@@ -88,7 +95,8 @@ void DrawESPLoot::DrawItem(CObservedLootItem& Item, ImDrawList* DrawList, ImVec2
 {
 	if (Item.IsInvalid()) return;
 
-	int32_t itemPrice = Item.GetItemPrice();
+	// Use GetEffectivePrice() for consistency with LootFilter color system (handles price-per-slot)
+	int32_t itemPrice = LootFilter::GetEffectivePrice(Item);
 
 	if (m_MinItemPrice > 0 && itemPrice < m_MinItemPrice)
 		return;

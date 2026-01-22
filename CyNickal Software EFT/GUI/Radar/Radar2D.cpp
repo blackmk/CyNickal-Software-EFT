@@ -138,7 +138,8 @@ static std::string ReadUnityString(uintptr_t ptr)
 
 static void AutoDetectMap()
 {
-	if (!Radar2D::bAutoMap || !EFT::pGameWorld)
+	auto gameWorld = EFT::GetGameWorld();
+	if (!Radar2D::bAutoMap || !gameWorld)
 		return;
 
 	static auto lastCheck = std::chrono::steady_clock::now();
@@ -150,7 +151,7 @@ static void AutoDetectMap()
 	DMA_Connection* Conn = DMA_Connection::GetInstance();
 	if (!Conn || !Conn->IsConnected()) return;
 
-	uintptr_t mapPtr = EFT::GetProcess().ReadMem<uintptr_t>(Conn, EFT::pGameWorld->m_EntityAddress + 0xC8);
+	uintptr_t mapPtr = EFT::GetProcess().ReadMem<uintptr_t>(Conn, gameWorld->m_EntityAddress + 0xC8);
 	std::string internalName = ReadUnityString(mapPtr);
 
 	if (internalName.empty())
@@ -690,7 +691,8 @@ void Radar2D::Render()
 	}
 	
 	bool inRaid = EFT::IsInRaid();
-	if (!inRaid || !EFT::pGameWorld)
+	auto gameWorld = EFT::GetGameWorld();
+	if (!inRaid || !gameWorld)
 	{
 		s_localPlayerPos = {};
 		ImGui::TextColored(ImVec4(0.7f, 0.7f, 0.7f, 1.0f), "Waiting for raid to start...");
@@ -730,11 +732,13 @@ void Radar2D::Render()
 	
 	// Clip and fill background
 	drawList->PushClipRect(canvasMin, canvasMax, true);
-	drawList->AddRectFilled(canvasMin, canvasMax, IM_COL32(30, 30, 30, 240));
+	drawList->AddRectFilled(canvasMin, canvasMax, IM_COL32(0, 0, 0, 255));
 	
 	// Get local player position
-	auto& playerList = EFT::GetRegisteredPlayers();
-	s_localPlayerPos = playerList.GetLocalPlayerPosition();
+	if (gameWorld->m_pRegisteredPlayers)
+		s_localPlayerPos = gameWorld->m_pRegisteredPlayers->GetLocalPlayerPosition();
+	else
+		s_localPlayerPos = {};
 	
 	// Auto-set map if enabled
 	if (bAutoMap)
@@ -762,19 +766,19 @@ void Radar2D::Render()
 	}
 	
 	// Draw entities
-	if (bShowExfils && EFT::pGameWorld->m_pExfilController)
+	if (bShowExfils && gameWorld->m_pExfilController)
 	{
-		DrawExfils(drawList, params, canvasMin, canvasMax);
+		DrawExfils(drawList, params, canvasMin, canvasMax, gameWorld->m_pExfilController.get());
 	}
 	
-	if (bShowLoot && EFT::pGameWorld->m_pLootList)
+	if (bShowLoot && gameWorld->m_pLootList)
 	{
-		DrawLoot(drawList, params, canvasMin, canvasMax);
+		DrawLoot(drawList, params, canvasMin, canvasMax, gameWorld->m_pLootList.get());
 	}
 	
-	if (bShowPlayers && EFT::pGameWorld->m_pRegisteredPlayers)
+	if (bShowPlayers && gameWorld->m_pRegisteredPlayers)
 	{
-		DrawPlayers(drawList, params, canvasMin, canvasMax);
+		DrawPlayers(drawList, params, canvasMin, canvasMax, gameWorld->m_pRegisteredPlayers.get());
 	}
 
 	// Draw quest markers
@@ -918,15 +922,15 @@ void Radar2D::DrawMapLayers(ImDrawList* drawList, float playerHeight, const MapP
 }
 
 void Radar2D::DrawPlayers(ImDrawList* drawList, const MapParams& params,
-                          const ImVec2& canvasMin, const ImVec2& canvasMax)
+	                       const ImVec2& canvasMin, const ImVec2& canvasMax,
+	                       CRegisteredPlayers* playerList)
 {
-	if (!params.config)
+	if (!params.config || !playerList)
 		return;
 	
-	auto& playerList = EFT::GetRegisteredPlayers();
-	std::scoped_lock lk(playerList.m_Mut);
+	std::scoped_lock lk(playerList->m_Mut);
 	
-	for (const auto& player : playerList.m_Players)
+	for (const auto& player : playerList->m_Players)
 	{
 		std::visit([&](const auto& p) {
 			if (p.IsInvalid())
@@ -1002,13 +1006,13 @@ void Radar2D::DrawPlayers(ImDrawList* drawList, const MapParams& params,
 }
 
 void Radar2D::DrawLoot(ImDrawList* drawList, const MapParams& params,
-                       const ImVec2& canvasMin, const ImVec2& canvasMax)
+	                     const ImVec2& canvasMin, const ImVec2& canvasMax,
+	                     CLootList* lootList)
 {
-	if (!params.config)
+	if (!params.config || !lootList)
 		return;
 	
-	auto& lootList = EFT::GetLootList();
-	auto& observedItems = lootList.m_ObservedItems;
+	auto& observedItems = lootList->m_ObservedItems;
 	std::scoped_lock lk(observedItems.m_Mut);
 	
 	for (const auto& item : observedItems.m_Entities)
@@ -1061,15 +1065,15 @@ void Radar2D::DrawLoot(ImDrawList* drawList, const MapParams& params,
 }
 
 void Radar2D::DrawExfils(ImDrawList* drawList, const MapParams& params,
-                         const ImVec2& canvasMin, const ImVec2& canvasMax)
+	                      const ImVec2& canvasMin, const ImVec2& canvasMax,
+	                      CExfilController* exfilController)
 {
-	if (!params.config)
+	if (!params.config || !exfilController)
 		return;
 	
-	auto& exfilController = EFT::GetExfilController();
-	std::scoped_lock lk(exfilController.m_ExfilMutex);
+	std::scoped_lock lk(exfilController->m_ExfilMutex);
 	
-	for (const auto& exfil : exfilController.m_Exfils)
+	for (const auto& exfil : exfilController->m_Exfils)
 	{
 		if (exfil.IsInvalid())
 			continue;
@@ -1132,13 +1136,13 @@ void Radar2D::DrawQuestMarkers(ImDrawList* drawList, const MapParams& params,
 		return;
 
 	auto& questMgr = Quest::CQuestManager::GetInstance();
-	auto& settings = questMgr.GetSettings();
+	auto snapshot = questMgr.GetSnapshot();
+	const auto& settings = snapshot.Settings;
 
 	if (!settings.bEnabled || !settings.bShowQuestLocations)
 		return;
 
-	std::scoped_lock lk(questMgr.GetMutex());
-	const auto& questLocations = questMgr.GetQuestLocations();
+	const auto& questLocations = snapshot.QuestLocations;
 
 	for (const auto& loc : questLocations)
 	{
@@ -1293,7 +1297,8 @@ void Radar2D::RenderEmbedded()
 	}
 	
 	bool inRaid = EFT::IsInRaid();
-	if (!inRaid || !EFT::pGameWorld)
+	auto gameWorld = EFT::GetGameWorld();
+	if (!inRaid || !gameWorld)
 	{
 		s_localPlayerPos = {};
 		ImGui::TextColored(ImVec4(0.7f, 0.7f, 0.7f, 1.0f), "Waiting for raid to start...");
@@ -1339,11 +1344,13 @@ void Radar2D::RenderEmbedded()
 	
 	// Clip and fill background
 	drawList->PushClipRect(canvasMin, canvasMax, true);
-	drawList->AddRectFilled(canvasMin, canvasMax, IM_COL32(30, 30, 30, 240));
+	drawList->AddRectFilled(canvasMin, canvasMax, IM_COL32(0, 0, 0, 255));
 	
 	// Get local player position
-	auto& playerList = EFT::GetRegisteredPlayers();
-	s_localPlayerPos = playerList.GetLocalPlayerPosition();
+	if (gameWorld->m_pRegisteredPlayers)
+		s_localPlayerPos = gameWorld->m_pRegisteredPlayers->GetLocalPlayerPosition();
+	else
+		s_localPlayerPos = {};
 	
 	// Auto-set map if enabled
 	if (bAutoMap)
@@ -1371,19 +1378,19 @@ void Radar2D::RenderEmbedded()
 	}
 	
 	// Draw entities
-	if (bShowExfils && EFT::pGameWorld->m_pExfilController)
+	if (bShowExfils && gameWorld->m_pExfilController)
 	{
-		DrawExfils(drawList, params, canvasMin, canvasMax);
+		DrawExfils(drawList, params, canvasMin, canvasMax, gameWorld->m_pExfilController.get());
 	}
 	
-	if (bShowLoot && EFT::pGameWorld->m_pLootList)
+	if (bShowLoot && gameWorld->m_pLootList)
 	{
-		DrawLoot(drawList, params, canvasMin, canvasMax);
+		DrawLoot(drawList, params, canvasMin, canvasMax, gameWorld->m_pLootList.get());
 	}
 	
-	if (bShowPlayers && EFT::pGameWorld->m_pRegisteredPlayers)
+	if (bShowPlayers && gameWorld->m_pRegisteredPlayers)
 	{
-		DrawPlayers(drawList, params, canvasMin, canvasMax);
+		DrawPlayers(drawList, params, canvasMin, canvasMax, gameWorld->m_pRegisteredPlayers.get());
 	}
 
 	// Draw quest markers

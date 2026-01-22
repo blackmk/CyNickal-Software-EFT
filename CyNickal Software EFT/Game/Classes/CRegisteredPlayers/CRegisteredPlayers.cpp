@@ -2,10 +2,49 @@
 #include "CRegisteredPlayers.h"
 #include "Game/EFT.h"
 #include "Game/Offsets/Offsets.h"
+#include <cstdint>
+#include <utility>
 
 CRegisteredPlayers::CRegisteredPlayers(uintptr_t RegisteredPlayersAddress) : CBaseEntity(RegisteredPlayersAddress)
 {
 	std::println("[CRegisteredPlayers] Constructed CRegisteredPlayers with 0x{:X}", RegisteredPlayersAddress);
+}
+
+constexpr std::size_t NUM_STAGES{ 14 };
+template<uint8_t StageNum>
+void ExecuteStage(VMMDLL_SCATTER_HANDLE vmsh, std::vector<CRegisteredPlayers::Player>& Players, DWORD PID) noexcept
+{
+	if constexpr (StageNum == 0 || StageNum > NUM_STAGES) return;
+
+	auto PrepareRead = [&vmsh](auto& Player) {
+		if constexpr (StageNum == 1) Player.PrepareRead_1(vmsh);
+		else if constexpr (StageNum == 2) Player.PrepareRead_2(vmsh);
+		else if constexpr (StageNum == 3) Player.PrepareRead_3(vmsh);
+		else if constexpr (StageNum == 4) Player.PrepareRead_4(vmsh);
+		else if constexpr (StageNum == 5) Player.PrepareRead_5(vmsh);
+		else if constexpr (StageNum == 6) Player.PrepareRead_6(vmsh);
+		else if constexpr (StageNum == 7) Player.PrepareRead_7(vmsh);
+		else if constexpr (StageNum == 8) Player.PrepareRead_8(vmsh);
+		else if constexpr (StageNum == 9) Player.PrepareRead_9(vmsh);
+		else if constexpr (StageNum == 10) Player.PrepareRead_10(vmsh);
+		else if constexpr (StageNum == 11) Player.PrepareRead_11(vmsh);
+		else if constexpr (StageNum == 12) Player.PrepareRead_12(vmsh);
+		else if constexpr (StageNum == 13) Player.PrepareRead_13(vmsh);
+		else if constexpr (StageNum == 14) Player.PrepareRead_14(vmsh);
+		};
+
+	for (auto& Player : Players)
+		std::visit([&](auto& p) { PrepareRead(p); }, Player);
+
+	VMMDLL_Scatter_Execute(vmsh);
+	VMMDLL_Scatter_Clear(vmsh, PID, VMMDLL_FLAG_NOCACHE);
+}
+
+template<std::size_t... Stages>
+void ExecuteStages(VMMDLL_SCATTER_HANDLE vmsh, std::vector<CRegisteredPlayers::Player>& Players, DWORD PID,
+	std::index_sequence<Stages...>) noexcept
+{
+	(ExecuteStage<static_cast<uint8_t>(Stages + 1)>(vmsh, Players, PID), ...);
 }
 
 void CRegisteredPlayers::ExecuteReadsOnPlayerVec(DMA_Connection* Conn, std::vector<Player>& Players)
@@ -14,75 +53,7 @@ void CRegisteredPlayers::ExecuteReadsOnPlayerVec(DMA_Connection* Conn, std::vect
 
 	auto vmsh = VMMDLL_Scatter_Initialize(Conn->GetHandle(), PID, VMMDLL_FLAG_NOCACHE);
 
-	for (auto& Player : Players)
-		std::visit([vmsh](auto& p) { p.PrepareRead_1(vmsh); }, Player);
-	VMMDLL_Scatter_Execute(vmsh);
-	VMMDLL_Scatter_Clear(vmsh, PID, VMMDLL_FLAG_NOCACHE);
-
-	for (auto& Player : Players)
-		std::visit([vmsh](auto& p) { p.PrepareRead_2(vmsh); }, Player);
-	VMMDLL_Scatter_Execute(vmsh);
-	VMMDLL_Scatter_Clear(vmsh, PID, VMMDLL_FLAG_NOCACHE);
-
-	for (auto& Player : Players)
-		std::visit([vmsh](auto& p) { p.PrepareRead_3(vmsh); }, Player);
-	VMMDLL_Scatter_Execute(vmsh);
-	VMMDLL_Scatter_Clear(vmsh, PID, VMMDLL_FLAG_NOCACHE);
-
-	for (auto& Player : Players)
-		std::visit([vmsh](auto& p) { p.PrepareRead_4(vmsh); }, Player);
-	VMMDLL_Scatter_Execute(vmsh);
-	VMMDLL_Scatter_Clear(vmsh, PID, VMMDLL_FLAG_NOCACHE);
-
-	for (auto& Player : Players)
-		std::visit([vmsh](auto& p) { p.PrepareRead_5(vmsh); }, Player);
-	VMMDLL_Scatter_Execute(vmsh);
-	VMMDLL_Scatter_Clear(vmsh, PID, VMMDLL_FLAG_NOCACHE);
-
-	for (auto& Player : Players)
-		std::visit([vmsh](auto& p) { p.PrepareRead_6(vmsh); }, Player);
-	VMMDLL_Scatter_Execute(vmsh);
-	VMMDLL_Scatter_Clear(vmsh, PID, VMMDLL_FLAG_NOCACHE);
-
-	for (auto& Player : Players)
-		std::visit([vmsh](auto& p) { p.PrepareRead_7(vmsh); }, Player);
-	VMMDLL_Scatter_Execute(vmsh);
-	VMMDLL_Scatter_Clear(vmsh, PID, VMMDLL_FLAG_NOCACHE);
-
-	for (auto& Player : Players)
-		std::visit([vmsh](auto& p) { p.PrepareRead_8(vmsh); }, Player);
-	VMMDLL_Scatter_Execute(vmsh);
-	VMMDLL_Scatter_Clear(vmsh, PID, VMMDLL_FLAG_NOCACHE);
-
-	for (auto& Player : Players)
-		std::visit([vmsh](auto& p) { p.PrepareRead_9(vmsh); }, Player);
-	VMMDLL_Scatter_Execute(vmsh);
-	VMMDLL_Scatter_Clear(vmsh, PID, VMMDLL_FLAG_NOCACHE);
-
-	for (auto& Player : Players)
-		std::visit([vmsh](auto& p) { p.PrepareRead_10(vmsh); }, Player);
-	VMMDLL_Scatter_Execute(vmsh);
-	VMMDLL_Scatter_Clear(vmsh, PID, VMMDLL_FLAG_NOCACHE);
-
-	for (auto& Player : Players)
-		std::visit([vmsh](auto& p) { p.PrepareRead_11(vmsh); }, Player);
-	VMMDLL_Scatter_Execute(vmsh);
-	VMMDLL_Scatter_Clear(vmsh, PID, VMMDLL_FLAG_NOCACHE);
-
-	for (auto& Player : Players)
-		std::visit([vmsh](auto& p) { p.PrepareRead_12(vmsh); }, Player);
-	VMMDLL_Scatter_Execute(vmsh);
-	VMMDLL_Scatter_Clear(vmsh, PID, VMMDLL_FLAG_NOCACHE);
-
-	for (auto& Player : Players)
-		std::visit([vmsh](auto& p) { p.PrepareRead_13(vmsh); }, Player);
-	VMMDLL_Scatter_Execute(vmsh);
-	VMMDLL_Scatter_Clear(vmsh, PID, VMMDLL_FLAG_NOCACHE);
-
-	for (auto& Player : Players)
-		std::visit([vmsh](auto& p) { p.PrepareRead_14(vmsh); }, Player);
-	VMMDLL_Scatter_Execute(vmsh);
-	VMMDLL_Scatter_Clear(vmsh, PID, VMMDLL_FLAG_NOCACHE);
+	ExecuteStages(vmsh, Players, PID, std::make_index_sequence<NUM_STAGES>{});
 
 	VMMDLL_Scatter_CloseHandle(vmsh);
 

@@ -8,26 +8,70 @@
 #include "Overlays/Ammo Count/Ammo Count.h"
 #include "Game/EFT.h"
 #include "Game/Camera List/Camera List.h"
+#include <chrono>
 
 #include "../Main Window/MonitorHelper.h"
 #include "../Main Window/Main Window.h"
+
+void Fuser::Initialize()
+{
+	// Validate and sync monitor settings from loaded config
+	auto monitors = MonitorHelper::GetAllMonitors();
+
+	// Validate selected monitor index
+	if (monitors.empty())
+	{
+		m_SelectedMonitor = 0;
+		m_ScreenSize = ImVec2(1920.0f, 1080.0f);
+		return;
+	}
+
+	if (m_SelectedMonitor < 0 || m_SelectedMonitor >= static_cast<int>(monitors.size()))
+	{
+		m_SelectedMonitor = 0;
+	}
+
+	// Sync screen size with validated monitor
+	if (!monitors.empty() && m_SelectedMonitor >= 0 && m_SelectedMonitor < static_cast<int>(monitors.size()))
+	{
+		const auto& m = monitors[m_SelectedMonitor];
+		m_ScreenSize.x = static_cast<float>(std::abs(m.rcMonitor.right - m.rcMonitor.left));
+		m_ScreenSize.y = static_cast<float>(std::abs(m.rcMonitor.bottom - m.rcMonitor.top));
+	}
+}
 
 void Fuser::Render()
 {
 	if (!bMasterToggle) return;
 
 	// Check if we're in raid with a valid GameWorld
-	if (!EFT::IsInRaid() || !EFT::pGameWorld)
+	auto gameWorld = EFT::GetGameWorld();
+	bool inRaid = EFT::IsInRaid() && gameWorld;
+
+	// Only block rendering if raid requirement enabled
+	if (bRequireRaidForESP && !inRaid)
 		return;
 
-	// Calculate position based on selected monitor
-	ImVec2 pos(0, 0);
-	auto monitors = MonitorHelper::GetAllMonitors();
-	if (Fuser::m_SelectedMonitor >= 0 && Fuser::m_SelectedMonitor < monitors.size())
+	// Calculate position based on selected monitor (cached)
+	static ImVec2 s_CachedWindowPos(0.0f, 0.0f);
+	static int s_LastSelectedMonitor = -1;
+	static std::chrono::steady_clock::time_point s_LastMonitorCheck{};
+	const auto now = std::chrono::steady_clock::now();
+
+	if (s_LastSelectedMonitor != Fuser::m_SelectedMonitor ||
+		now - s_LastMonitorCheck > std::chrono::seconds(1))
 	{
-		pos.x = static_cast<float>(monitors[Fuser::m_SelectedMonitor].rcMonitor.left);
-		pos.y = static_cast<float>(monitors[Fuser::m_SelectedMonitor].rcMonitor.top);
+		auto monitors = MonitorHelper::GetAllMonitors();
+		if (Fuser::m_SelectedMonitor >= 0 && Fuser::m_SelectedMonitor < static_cast<int>(monitors.size()))
+		{
+			s_CachedWindowPos.x = static_cast<float>(monitors[Fuser::m_SelectedMonitor].rcMonitor.left);
+			s_CachedWindowPos.y = static_cast<float>(monitors[Fuser::m_SelectedMonitor].rcMonitor.top);
+		}
+		s_LastSelectedMonitor = Fuser::m_SelectedMonitor;
+		s_LastMonitorCheck = now;
 	}
+
+	ImVec2 pos = s_CachedWindowPos;
 
 	ImGui::SetNextWindowPos(pos, ImGuiCond_Always);
 	ImGui::SetNextWindowSize(Fuser::m_ScreenSize);
@@ -36,17 +80,21 @@ void Fuser::Render()
 	auto WindowPos = ImGui::GetWindowPos();
 	auto DrawList = ImGui::GetWindowDrawList();
 
-	Aimbot::RenderFOVCircle(WindowPos, DrawList);
+	Aimbot::RenderFOVCircle(WindowPos, DrawList);  // Always show if aimbot enabled
 
-	if (EFT::pGameWorld->m_pLootList)
-		DrawESPLoot::DrawAll(WindowPos, DrawList);
+	// Only render game content when in raid
+	if (inRaid)
+	{
+		if (gameWorld->m_pLootList)
+			DrawESPLoot::DrawAll(WindowPos, DrawList);
 
-	DrawExfils::DrawAll(WindowPos, DrawList);
+		DrawExfils::DrawAll(WindowPos, DrawList);
 
-	if (EFT::pGameWorld->m_pRegisteredPlayers)
-		DrawESPPlayers::DrawAll(WindowPos, DrawList);
+		if (gameWorld->m_pRegisteredPlayers)
+			DrawESPPlayers::DrawAll(WindowPos, DrawList);
 
-	AmmoCountOverlay::Render();
+		AmmoCountOverlay::Render();
+	}
 
 	ImGui::End();
 	ImGui::PopStyleColor();
@@ -98,6 +146,13 @@ void Fuser::RenderSettings()
 	{
 		ImGui::Indent();
 		ImGui::Checkbox("Show Exfils", &DrawExfils::bMasterToggle);
+		ImGui::Checkbox("Require Raid for ESP", &Fuser::bRequireRaidForESP);
+		ImGui::SameLine();
+		ImGui::TextDisabled("(?)");
+		if (ImGui::IsItemHovered())
+		{
+			ImGui::SetTooltip("When enabled, ESP overlay only shows during raids.\nWhen disabled, overlay window always visible.");
+		}
 		ImGui::Unindent();
 	}
 
@@ -106,7 +161,17 @@ void Fuser::RenderSettings()
 	{
 		ImGui::Indent();
 		
-		auto monitors = MonitorHelper::GetAllMonitors();
+		// Cache monitor list, refresh every 2 seconds
+		static std::vector<MonitorData> s_MonitorListCache;
+		static std::chrono::steady_clock::time_point s_LastCacheUpdate{};
+		auto cacheNow = std::chrono::steady_clock::now();
+		if (s_MonitorListCache.empty() || cacheNow - s_LastCacheUpdate > std::chrono::seconds(2))
+		{
+			s_MonitorListCache = MonitorHelper::GetAllMonitors();
+			s_LastCacheUpdate = cacheNow;
+		}
+
+		const auto& monitors = s_MonitorListCache;
 		std::string preview = "Select Monitor...";
 		if (Fuser::m_SelectedMonitor >= 0 && Fuser::m_SelectedMonitor < monitors.size())
 			preview = monitors[Fuser::m_SelectedMonitor].friendlyName;
