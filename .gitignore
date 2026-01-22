@@ -36,10 +36,10 @@ nul
 
 ## AI Tools & Development ##
 # Claude Code / OpenCode
-.claude/settings.local.json
-.claude/plans/
-.claude/conversations/
-.claude/cache/
+.claude/
+.agent/
+CLAUDE.md
+AGENTS.md
 
 # Other AI assistants
 .cursor/
@@ -47,14 +47,20 @@ nul
 .aider/
 .continue/
 
+# Development documentation (local only)
+PatchNotes.md
+to_do.md
+git_guide.md
+
+# Development scripts/tools
+quick_build.bat
+quick_build.ps1
+coderabbit-install.sh
+coderabbit_*.sh
+coderabbit_*.html
+
 # Development backup/temp files
 *.backup
 *_New.*
 *_Old.*
 *_Temp.*
-quick_build.bat
-quick_build.ps1
-
-# CodeRabbit
-coderabbit_*.sh
-coderabbit_*.html
