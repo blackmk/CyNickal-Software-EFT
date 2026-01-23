@@ -270,10 +270,20 @@ void Radar2D::RenderEmbedded()
 	mapMgr.EnableAutoDetection(Settings.bAutoMap);
 	mapMgr.UpdateAutoDetection();
 
-	// Get current map
+	// Get current map (with caching to prevent flickering during transitions)
 	auto* currentMap = mapMgr.GetCurrentMap();
-	if (!currentMap)
+	static IRadarMap* s_lastValidMap = nullptr;
+
+	if (currentMap) {
+		// Update cache with valid map
+		s_lastValidMap = currentMap;
+	} else if (s_lastValidMap) {
+		// Use cached map during transitions to prevent flickering
+		currentMap = s_lastValidMap;
+	} else {
+		// No map available at all
 		return;
+	}
 
 	// Get canvas bounds
 	ImVec2 canvasMin = ImGui::GetCursorScreenPos();
